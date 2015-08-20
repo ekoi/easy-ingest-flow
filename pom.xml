@@ -44,6 +44,26 @@
             <artifactId>commons-configuration</artifactId>
             <version>1.10</version>
         </dependency>
+        <dependency>
+            <groupId>nl.knaw.dans.easy</groupId>
+            <artifactId>easy-stage-dataset</artifactId>
+            <version>1.x-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>nl.knaw.dans.easy</groupId>
+            <artifactId>easy-ingest</artifactId>
+            <version>1.x-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>nl.knaw.dans.easy</groupId>
+            <artifactId>easy-update-fs-rdb</artifactId>
+            <version>1.x-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>nl.knaw.dans.easy</groupId>
+            <artifactId>easy-update-solr-index</artifactId>
+            <version>1.x-SNAPSHOT</version>
+        </dependency>
     </dependencies>
     <build>
         <sourceDirectory>src/main/scala</sourceDirectory>
