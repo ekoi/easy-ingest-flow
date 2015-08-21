@@ -1,6 +1,7 @@
 package nl.knaw.dans.easy.ingest_flow
 
 import java.io.File
+import java.net.URL
 
 import com.yourmediashelf.fedora.client.FedoraCredentials
 import nl.knaw.dans.easy.fsrdb.FsRdbUpdater
@@ -35,17 +36,22 @@ object EasyIngestFlow {
     implicit val updateFsRdbSettings = nl.knaw.dans.easy.fsrdb.Settings(
       fedoraCredentials = fedoraCredentials,
       postgresURL = "postGresURL",
-      datasetPid = "easy-dataset:1337")
+      datasetPid = "easy-dataset:39")
+
+    implicit val updateSolrIndexSettings = nl.knaw.dans.easy.solr.Settings(
+      fedoraCredentials = fedoraCredentials,
+      solr = new URL("http://deasy:8080/solr/datasets/update"),
+      dataset = "easy-dataset:39")
 
     for {
       _ <- Try { log.info("Staging dataset") }
-      _ <- EasyStageDataset.run()
+      _ <- EasyStageDataset.run
       _ = log.info("Ingesting staged digital object into Fedora")
-      pidDictionary <- EasyIngest.run()
+      pidDictionary <- EasyIngest.run
       _ = log.info("Updating PostgreSQL database")
-      _ <- FsRdbUpdater.run()
+      _ <- FsRdbUpdater.run
       _ = log.info("Updating Solr index")
-      _ <- EasyUpdateSolrIndex.run(???)
+      _ <- EasyUpdateSolrIndex.run
     } yield log.info("Finished")
 
   }
