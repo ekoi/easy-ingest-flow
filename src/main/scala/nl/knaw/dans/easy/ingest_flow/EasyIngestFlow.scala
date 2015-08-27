@@ -4,6 +4,7 @@ import java.io.File
 import java.net.URL
 
 import com.yourmediashelf.fedora.client.FedoraCredentials
+import nl.knaw.dans.easy._
 import nl.knaw.dans.easy.fsrdb.FsRdbUpdater
 import nl.knaw.dans.easy.ingest.EasyIngest
 import nl.knaw.dans.easy.ingest.EasyIngest.PidDictionary
@@ -11,7 +12,9 @@ import nl.knaw.dans.easy.solr.EasyUpdateSolrIndex
 import nl.knaw.dans.easy.stage.EasyStageDataset
 import org.slf4j.LoggerFactory
 
+import scala.annotation.tailrec
 import scala.util.{Failure, Success, Try}
+import scalaj.http.Http
 
 object EasyIngestFlow {
   val log = LoggerFactory.getLogger(getClass)
@@ -19,53 +22,53 @@ object EasyIngestFlow {
   def main(args: Array[String]) {
     implicit val fedoraCreds = new FedoraCredentials(
       "http://deasy:8080/fedora", "fedoraAdmin", "fedoraAdmin")
-    run(new File("out/sdoSetDir"))
+    run(new File("out/sdoSetDir")) match {
+      case Success(datasetPid) => log.info(s"Finished, dataset pid: $datasetPid")
+      case Failure(e) => throw e
+    }
   }
 
-  def run(sdo: File)(implicit fedoraCreds: FedoraCredentials): Try[Unit] = {
+  def run(sdo: File)(implicit fedoraCreds: FedoraCredentials): Try[String] = {
     for {
       _ <- stageDataset(sdo)
       pidDictionary <- ingestDataset(sdo)
       datasetPid <- getDatasetPid(pidDictionary)
+      _ <- waitForFedoraSync(datasetPid, pidDictionary, numTries = 10, delayMillis = 3000)
       _ <- updateFsRdb(datasetPid)
       _ <- updateSolr(datasetPid)
-    } yield log.info("Finished")
+    } yield datasetPid
   }
 
   def stageDataset(sdo: File): Try[Unit] = {
     log.info("Staging dataset")
-    implicit val stageDatasetSettings = nl.knaw.dans.easy.stage.Settings(
-      ownerId = "ownerId",
+    EasyStageDataset.run(stage.Settings(
+      ownerId = "georgi",
       bagStorageLocation = "http://localhost/bags",
       bagitDir = new File("test-resources/example-bag"),
       sdoSetDir = sdo,
       URN = "urn:nbn:nl:ui:13-1337-13",
-      DOI = "10.1000/xyz123")
-    EasyStageDataset.run
+      DOI = "10.1000/xyz123"))
   }
 
   def ingestDataset(sdo: File)(implicit fedoraCreds: FedoraCredentials): Try[PidDictionary] = {
     log.info("Ingesting staged digital object into Fedora")
-    implicit val ingestSettings = nl.knaw.dans.easy.ingest.Settings(fedoraCreds, sdo)
-    EasyIngest.run
+    EasyIngest.run(ingest.Settings(fedoraCreds, sdo))
   }
 
   def updateFsRdb(datasetPid: String)(implicit fedoraCreds: FedoraCredentials): Try[Unit] = {
     log.info("Updating PostgreSQL database")
-    implicit val updateFsRdbSettings = nl.knaw.dans.easy.fsrdb.Settings(
+    FsRdbUpdater.run(fsrdb.Settings(
       fedoraCredentials = fedoraCreds,
-      postgresURL = "postGresURL",
-      datasetPid = datasetPid)
-    FsRdbUpdater.run
+      postgresURL = "jdbc:postgresql://deasy:5432/easy_db?user=easy_webui&password=easy_webui",
+      datasetPid = datasetPid))
   }
 
   def updateSolr(datasetPid: String)(implicit fedoraCreds: FedoraCredentials): Try[Unit] = {
     log.info("Updating Solr index")
-    implicit val updateSolrIndexSettings = nl.knaw.dans.easy.solr.Settings(
+    EasyUpdateSolrIndex.run(solr.Settings(
       fedoraCredentials = fedoraCreds,
       solr = new URL("http://deasy:8080/solr/datasets/update"),
-      dataset = datasetPid)
-    EasyUpdateSolrIndex.run
+      dataset = datasetPid))
   }
 
   def getDatasetPid(pidDictionary: PidDictionary): Try[String] = {
@@ -73,6 +76,43 @@ object EasyIngestFlow {
       case Some(pid) => Success(pid)
       case None => Failure(new RuntimeException("SDO-set didn't contain a dataset object."))
     }
+  }
+
+  def waitForFedoraSync(datasetPid: String, pidDictionary: PidDictionary, numTries: Int, delayMillis: Long)(implicit fedoraCreds: FedoraCredentials): Try[Unit] = {
+    val expectedPids = pidDictionary.values.toSet - datasetPid
+    @tailrec def loop(n: Int): Try[Unit] = {
+      log.info(s"Check whether Fedora is synced. Tries left: $n.")
+      if (n <= 0)
+        Failure(new RuntimeException(s"Fedora didn't sync in time. Dataset: $datasetPid. Expected pids: $expectedPids"))
+      else
+        queryPids(datasetPid).map(pids => pids.size == expectedPids.size && pids.toSet == expectedPids) match {
+          case Success(true) => Success(Unit)
+          case _ =>
+            Thread.sleep(delayMillis)
+            loop(n-1)
+        }
+    }
+    loop(numTries)
+  }
+
+  def queryPids(datasetPid: String)(implicit fedoraCreds: FedoraCredentials): Try[List[String]] = Try {
+    val url = s"${fedoraCreds.getBaseUrl}/risearch"
+    val response = Http(url)
+      .timeout(connTimeoutMs = 10000, readTimeoutMs = 50000)
+      .param("type", "tuples")
+      .param("lang", "sparql")
+      .param("format", "CSV")
+      .param("query",
+        s"""
+           |select ?s
+           |from <#ri>
+           |where { ?s <http://dans.knaw.nl/ontologies/relations#isSubordinateTo> <info:fedora/$datasetPid> . }
+        """.stripMargin)
+      .asString
+    if (response.code != 200)
+      throw new RuntimeException(s"Failed to query fedora resource index ($url), response code: ${response.code}")
+    response.body.lines.toList.drop(1)
+      .map(_.replace("info:fedora/", ""))
   }
 
 }
