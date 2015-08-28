@@ -24,61 +24,57 @@ object EasyIngestFlow {
                       syncDelay: Long,
                       ownerId: String,
                       bagStorageLocation: String,
-                      bagitDir: String,
-                      sdoSetDir: String,
+                      bagitDir: File,
+                      sdoSetDir: File,
                       DOI: String,
                       postgresURL: String,
                       solr: String,
                       pidgen: String)
 
   def main(args: Array[String]) {
-
     implicit val settings = Settings(
       fedoraCredentials = new FedoraCredentials("http://deasy:8080/fedora", "fedoraAdmin", "fedoraAdmin"),
       numSyncTries = 10,
       syncDelay = 3000,
       ownerId = "georgi",
       bagStorageLocation = "http://localhost/bags",
-      bagitDir = "test-resources/example-bag",
-      sdoSetDir = "out/sdoSetDir",
+      bagitDir = new File("test-resources/example-bag"),
+      sdoSetDir = new File("out/sdoSetDir"),
       DOI = "10.1000/xyz123",
       postgresURL = "jdbc:postgresql://deasy:5432/easy_db?user=easy_webui&password=easy_webui",
       solr = "http://deasy:8080/solr/datasets/update",
-      pidgen = "http://deasy:8082/pids?type=urn"
-    )
+      pidgen = "http://deasy:8082/pids?type=urn")
 
-    run(new File("out/sdoSetDir")) match {
-      case Success(datasetPid) => log.info(s"Finished, dataset pid: $datasetPid")
-      case Failure(e) => throw e
-    }
+    val datasetPid = run().get
+    log.info(s"Finished, dataset pid: $datasetPid")
   }
 
-  def run(sdo: File)(implicit s: Settings): Try[String] = {
+  def run()(implicit s: Settings): Try[String] = {
     for {
       urn <- requestURN()
-      _ <- stageDataset(sdo, urn)
-      pidDictionary <- ingestDataset(sdo)
+      _ <- stageDataset(urn)
+      pidDictionary <- ingestDataset()
       datasetPid <- getDatasetPid(pidDictionary)
-      _ <- waitForFedoraSync(datasetPid, pidDictionary, numTries = 10, delayMillis = 3000)
+      _ <- waitForFedoraSync(datasetPid, pidDictionary, s.numSyncTries, s.syncDelay)
       _ <- updateFsRdb(datasetPid)
       _ <- updateSolr(datasetPid)
     } yield datasetPid
   }
 
-  def stageDataset(sdo: File, urn: String)(implicit s: Settings): Try[Unit] = {
+  def stageDataset(urn: String)(implicit s: Settings): Try[Unit] = {
     log.info("Staging dataset")
     EasyStageDataset.run(stage.Settings(
       ownerId = s.ownerId,
       bagStorageLocation = s.bagStorageLocation,
-      bagitDir = new File(s.bagitDir),
-      sdoSetDir = sdo,
+      bagitDir = s.bagitDir,
+      sdoSetDir = s.sdoSetDir,
       URN = urn,
       DOI = s.DOI))
   }
 
-  def ingestDataset(sdo: File)(implicit s: Settings): Try[PidDictionary] = {
+  def ingestDataset()(implicit s: Settings): Try[PidDictionary] = {
     log.info("Ingesting staged digital object into Fedora")
-    EasyIngest.run(ingest.Settings(s.fedoraCredentials, sdo))
+    EasyIngest.run(ingest.Settings(s.fedoraCredentials, s.sdoSetDir))
   }
 
   def updateFsRdb(datasetPid: String)(implicit s: Settings): Try[Unit] = {
