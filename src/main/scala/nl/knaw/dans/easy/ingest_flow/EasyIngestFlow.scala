@@ -39,7 +39,7 @@ import scalaj.http.Http
 
 object EasyIngestFlow {
   val log = LoggerFactory.getLogger(getClass)
-  val homeDir = new File(System.getenv("EASY_INGEST_FLOW_HOME"))
+
 
   case class Settings(storageUser: String,
                       storagePassword: String,
@@ -58,6 +58,7 @@ object EasyIngestFlow {
 
   def main(args: Array[String]) {
     val conf = new Conf(args)
+    val homeDir = new File(System.getenv("EASY_INGEST_FLOW_HOME"))
     val props = new PropertiesConfiguration(new File(homeDir, "cfg/application.properties"))
     implicit val settings = Settings(
       storageUser = props.getString("storage.user"),
@@ -113,7 +114,10 @@ object EasyIngestFlow {
       bagitDir = s.bagitDir,
       sdoSetDir = s.sdoSetDir,
       URN = urn,
-      DOI = s.DOI))
+      DOI = s.DOI,
+      fedoraUrl = s.fedoraCredentials.getBaseUrl,
+      fedoraUser = s.fedoraCredentials.getUsername,
+      fedoraPassword =  s.fedoraCredentials.getPassword))
   }
 
   def ingestDataset()(implicit s: Settings): Try[PidDictionary] = {
