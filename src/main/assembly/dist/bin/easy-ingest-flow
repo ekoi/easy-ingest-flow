@@ -1,4 +1,5 @@
 #!/bin/bash
 
-java -Dlogback.configurationFile=$EASY_INGEST_FLOW_HOME/cfg/logback.xml \
+java -Dlogback.statusListenerClass=ch.qos.logback.core.status.OnConsoleStatusListener \
+     -Dlogback.configurationFile=$EASY_INGEST_FLOW_HOME/cfg/logback.xml \
      -jar $EASY_INGEST_FLOW_HOME/bin/easy-ingest-flow.jar $@

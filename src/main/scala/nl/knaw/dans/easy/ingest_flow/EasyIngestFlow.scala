@@ -1,3 +1,21 @@
+/**
+ * *****************************************************************************
+ * Copyright 2015 DANS - Data Archiving and Networked Services
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ****************************************************************************
+ */
+
 package nl.knaw.dans.easy.ingest_flow
 
 import java.io.File
@@ -5,11 +23,14 @@ import java.net.URL
 
 import com.yourmediashelf.fedora.client.FedoraCredentials
 import nl.knaw.dans.easy._
+import nl.knaw.dans.easy.archivebag.EasyArchiveBag
 import nl.knaw.dans.easy.fsrdb.FsRdbUpdater
 import nl.knaw.dans.easy.ingest.EasyIngest
 import nl.knaw.dans.easy.ingest.EasyIngest.PidDictionary
 import nl.knaw.dans.easy.solr.EasyUpdateSolrIndex
 import nl.knaw.dans.easy.stage.EasyStageDataset
+import org.apache.commons.configuration.PropertiesConfiguration
+import org.apache.commons.io.FileUtils
 import org.slf4j.LoggerFactory
 
 import scala.annotation.tailrec
@@ -18,8 +39,12 @@ import scalaj.http.Http
 
 object EasyIngestFlow {
   val log = LoggerFactory.getLogger(getClass)
+  val homeDir = new File(System.getenv("EASY_INGEST_FLOW_HOME"))
 
-  case class Settings(fedoraCredentials: FedoraCredentials,
+  case class Settings(storageUser: String,
+                      storagePassword: String,
+                      storageServiceUrl: URL,
+                      fedoraCredentials: FedoraCredentials,
                       numSyncTries: Int,
                       syncDelay: Long,
                       ownerId: String,
@@ -32,18 +57,26 @@ object EasyIngestFlow {
                       pidgen: String)
 
   def main(args: Array[String]) {
+    val conf = new Conf(args)
+    val props = new PropertiesConfiguration(new File(homeDir, "cfg/application.properties"))
     implicit val settings = Settings(
-      fedoraCredentials = new FedoraCredentials("http://deasy:8080/fedora", "fedoraAdmin", "fedoraAdmin"),
-      numSyncTries = 10,
-      syncDelay = 3000,
-      ownerId = "georgi",
-      bagStorageLocation = "http://localhost/bags",
-      bagitDir = new File("test-resources/example-bag"),
-      sdoSetDir = new File("out/sdoSetDir"),
-      DOI = "10.1000/xyz123",
-      postgresURL = "jdbc:postgresql://deasy:5432/easy_db?user=easy_webui&password=easy_webui",
-      solr = "http://deasy:8080/solr/datasets/update",
-      pidgen = "http://deasy:8082/pids?type=urn")
+      storageUser = props.getString("storage.user"),
+      storagePassword = props.getString("storage.password"),
+      storageServiceUrl = new URL(props.getString("storage.service-url")),
+      fedoraCredentials = new FedoraCredentials(
+        props.getString("fcrepo.url"),
+        props.getString("fcrepo.user"),
+        props.getString("fcrepo.password")),
+      numSyncTries = props.getInt("sync.num-tries"),
+      syncDelay = props.getInt("sync.delay"),
+      ownerId = props.getString("easy.owner"),
+      bagStorageLocation = props.getString("storage.base-url"),
+      bagitDir = conf.depositDir(),
+      sdoSetDir = new File(props.getString("staging.root-dir"), conf.depositDir().getName),
+      DOI = "10.1000/xyz123", // TODO: get this from the deposit metadata
+      postgresURL = props.getString("fsrdb.connection-url"),
+      solr = props.getString("solr.update-url"),
+      pidgen = props.getString("pid-generator.url"))
 
     val datasetPid = run().get
     log.info(s"Finished, dataset pid: $datasetPid")
@@ -52,20 +85,31 @@ object EasyIngestFlow {
   def run()(implicit s: Settings): Try[String] = {
     for {
       urn <- requestURN()
-      _ <- stageDataset(urn)
+      datasetDir <- archiveBag()
+      _ <- stageDataset(urn, datasetDir)
       pidDictionary <- ingestDataset()
       datasetPid <- getDatasetPid(pidDictionary)
       _ <- waitForFedoraSync(datasetPid, pidDictionary, s.numSyncTries, s.syncDelay)
       _ <- updateFsRdb(datasetPid)
       _ <- updateSolr(datasetPid)
+      _ <- deleteSdoSetDir()
     } yield datasetPid
   }
 
-  def stageDataset(urn: String)(implicit s: Settings): Try[Unit] = {
+  def archiveBag()(implicit s: Settings): Try[String] = {
+     EasyArchiveBag.run(archivebag.Settings(
+       username = s.storageUser,
+       password = s.storagePassword,
+       bagDir = s.bagitDir,
+       storageDepositService =  s.storageServiceUrl)
+     )
+  }
+
+  def stageDataset(urn: String, datasetDir: String)(implicit s: Settings): Try[Unit] = {
     log.info("Staging dataset")
     EasyStageDataset.run(stage.Settings(
       ownerId = s.ownerId,
-      bagStorageLocation = s.bagStorageLocation,
+      bagStorageLocation = s.bagStorageLocation + "/" + datasetDir,
       bagitDir = s.bagitDir,
       sdoSetDir = s.sdoSetDir,
       URN = urn,
@@ -91,6 +135,11 @@ object EasyIngestFlow {
       fedoraCredentials = s.fedoraCredentials,
       solr = new URL(s.solr),
       dataset = datasetPid))
+  }
+
+  def deleteSdoSetDir()(implicit s: Settings): Try[Unit] = Try {
+    log.info(s"Removing staged dataset from ${s.sdoSetDir}")
+    FileUtils.deleteDirectory(s.sdoSetDir)
   }
 
   def getDatasetPid(pidDictionary: PidDictionary): Try[String] = {
