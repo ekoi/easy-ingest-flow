@@ -60,6 +60,7 @@ object EasyIngestFlow {
     val conf = new Conf(args)
     val homeDir = new File(System.getenv("EASY_INGEST_FLOW_HOME"))
     val props = new PropertiesConfiguration(new File(homeDir, "cfg/application.properties"))
+    val bagDir = conf.depositDir().listFiles.filter(_.getName != ".git")(0)
     implicit val settings = Settings(
       storageUser = props.getString("storage.user"),
       storagePassword = props.getString("storage.password"),
@@ -72,7 +73,7 @@ object EasyIngestFlow {
       syncDelay = props.getInt("sync.delay"),
       ownerId = props.getString("easy.owner"),
       bagStorageLocation = props.getString("storage.base-url"),
-      bagitDir = conf.depositDir(),
+      bagitDir = bagDir,
       sdoSetDir = new File(props.getString("staging.root-dir"), conf.depositDir().getName),
       DOI = "10.1000/xyz123", // TODO: get this from the deposit metadata
       postgresURL = props.getString("fsrdb.connection-url"),
@@ -98,6 +99,7 @@ object EasyIngestFlow {
   }
 
   def archiveBag()(implicit s: Settings): Try[String] = {
+    log.info("Sending bag to archival storage")
      EasyArchiveBag.run(archivebag.Settings(
        username = s.storageUser,
        password = s.storagePassword,
