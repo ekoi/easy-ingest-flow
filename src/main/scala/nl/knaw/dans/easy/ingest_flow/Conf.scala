@@ -35,7 +35,7 @@ class Conf(args: Seq[String]) extends ScallopConf(args) {
     descr = "Deposit-directory to ingest",
     required = true)
   validate(depositDir) { d =>
-    if(d.isDirectory && d.listFiles.filter(_.getName != ".git").size == 1) Right(Unit)
+    if(d.isDirectory && d.listFiles.filter(f => f.isDirectory && f.getName != ".git").size == 1) Right(Unit)
     else Left(s"Invalid deposit directory $d. It does not contain exactly one directory (other than .git).")
  }
 } 

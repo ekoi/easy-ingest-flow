@@ -81,12 +81,17 @@ object EasyIngestFlow {
       solr = props.getString("solr.update-url"),
       pidgen = props.getString("pid-generator.url"))
 
-    val datasetPid = run().get
-    log.info(s"Finished, dataset pid: $datasetPid")
+    run() match {
+      case Success(datasetPid) => log.info(s"Finished, dataset pid: $datasetPid")
+      case Failure(e) =>
+        tagDepositAsRejected(e.getMessage)
+        log.error(e.getMessage)
+    }
   }
 
   def run()(implicit s: Settings): Try[String] = {
     for {
+      _ <- assertNoVirusesInDeposit()
       urn <- requestURN()
       datasetDir <- archiveBag()
       _ <- stageDataset(urn, datasetDir)
@@ -98,6 +103,16 @@ object EasyIngestFlow {
       _ <- deleteSdoSetDir()
       _ <- tagDepositAsArchived(datasetDir)
     } yield datasetPid
+  }
+
+  def assertNoVirusesInDeposit()(implicit s: Settings): Try[Unit] = Try {
+    import scala.sys.process._
+    val cmd = s"/usr/bin/clamscan -r -i ${s.bagitDir.getParentFile}"
+    log.info(s"Scanning for viruses: $cmd")
+    var output = ""
+    val exit = Process(cmd)! ProcessLogger(line => output += line + "\n")
+    if(exit > 0) throw new RuntimeException(s"Detected a virus, clamscan output:\n$output")
+    log.info("No viruses found")
   }
 
   def archiveBag()(implicit s: Settings): Try[String] = {
@@ -151,10 +166,19 @@ object EasyIngestFlow {
   }
 
   def tagDepositAsArchived(datasetDir: String)(implicit s:Settings): Try[Unit] = Try {
+    log.info("Tagging deposit as ARCHIVED")
     Git.open(s.bagitDir.getParentFile)
       .tag()
       .setName("state=ARCHIVED")
       .setMessage(s.bagStorageLocation + "/" + datasetDir).call()
+  }
+
+  def tagDepositAsRejected(reason: String)(implicit s:Settings): Try[Unit] = Try {
+    log.info("Tagging deposit as REJECTED")
+    Git.open(s.bagitDir.getParentFile)
+      .tag()
+      .setName("state=REJECTED")
+      .setMessage(reason).call()
   }
 
   def getDatasetPid(pidDictionary: PidDictionary): Try[String] = {
