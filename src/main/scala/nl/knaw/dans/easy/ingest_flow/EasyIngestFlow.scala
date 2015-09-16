@@ -31,6 +31,7 @@ import nl.knaw.dans.easy.solr.EasyUpdateSolrIndex
 import nl.knaw.dans.easy.stage.EasyStageDataset
 import org.apache.commons.configuration.PropertiesConfiguration
 import org.apache.commons.io.FileUtils
+import org.eclipse.jgit.api.Git
 import org.slf4j.LoggerFactory
 
 import scala.annotation.tailrec
@@ -95,6 +96,7 @@ object EasyIngestFlow {
       _ <- updateFsRdb(datasetPid)
       _ <- updateSolr(datasetPid)
       _ <- deleteSdoSetDir()
+      _ <- tagDepositAsArchived(datasetDir)
     } yield datasetPid
   }
 
@@ -146,6 +148,13 @@ object EasyIngestFlow {
   def deleteSdoSetDir()(implicit s: Settings): Try[Unit] = Try {
     log.info(s"Removing staged dataset from ${s.sdoSetDir}")
     FileUtils.deleteDirectory(s.sdoSetDir)
+  }
+
+  def tagDepositAsArchived(datasetDir: String)(implicit s:Settings): Try[Unit] = Try {
+    Git.open(s.bagitDir.getParentFile)
+      .tag()
+      .setName("state=ARCHIVED")
+      .setMessage(s.bagStorageLocation + "/" + datasetDir).call()
   }
 
   def getDatasetPid(pidDictionary: PidDictionary): Try[String] = {
