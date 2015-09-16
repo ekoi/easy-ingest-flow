@@ -41,7 +41,6 @@ import scalaj.http.Http
 object EasyIngestFlow {
   val log = LoggerFactory.getLogger(getClass)
 
-
   case class Settings(storageUser: String,
                       storagePassword: String,
                       storageServiceUrl: URL,
@@ -186,8 +185,10 @@ object EasyIngestFlow {
         queryPids(datasetPid).map(pids => pids.size == expectedPids.size && pids.toSet == expectedPids) match {
           case Success(true) => Success(Unit)
           case _ =>
-            Thread.sleep(delayMillis)
-            loop(n-1)
+            loop(Try { Thread.sleep(delayMillis) } match {
+              case Success(_) => n - 1
+              case Failure(_) => n
+            })
         }
     }
     loop(numTries)
