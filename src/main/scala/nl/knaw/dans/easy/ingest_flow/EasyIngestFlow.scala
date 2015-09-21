@@ -48,8 +48,9 @@ object EasyIngestFlow {
                       numSyncTries: Int,
                       syncDelay: Long,
                       ownerId: String,
+                      datasetAccessBaseUrl: String,
                       bagStorageLocation: String,
-                      bagitDir: File,
+                      depositDir: File,
                       sdoSetDir: File,
                       DOI: String,
                       postgresURL: String,
@@ -60,7 +61,6 @@ object EasyIngestFlow {
     val conf = new Conf(args)
     val homeDir = new File(System.getenv("EASY_INGEST_FLOW_HOME"))
     val props = new PropertiesConfiguration(new File(homeDir, "cfg/application.properties"))
-    val bagDir = conf.depositDir().listFiles.filter(_.getName != ".git")(0)
     implicit val settings = Settings(
       storageUser = props.getString("storage.user"),
       storagePassword = props.getString("storage.password"),
@@ -72,8 +72,9 @@ object EasyIngestFlow {
       numSyncTries = props.getInt("sync.num-tries"),
       syncDelay = props.getInt("sync.delay"),
       ownerId = props.getString("easy.owner"),
+      datasetAccessBaseUrl = props.getString("easy.dataset-access-base-url"),
       bagStorageLocation = props.getString("storage.base-url"),
-      bagitDir = bagDir,
+      depositDir = conf.depositDir(),
       sdoSetDir = new File(props.getString("staging.root-dir"), conf.depositDir().getName),
       DOI = "10.1000/xyz123", // TODO: get this from the deposit metadata
       postgresURL = props.getString("fsrdb.connection-url"),
@@ -100,13 +101,14 @@ object EasyIngestFlow {
       _ <- updateFsRdb(datasetPid)
       _ <- updateSolr(datasetPid)
       _ <- deleteSdoSetDir()
-      _ <- tagDepositAsArchived(datasetDir)
+      _ <- setDepositStateToArchived(datasetPid)
+      _ <- tagDepositAsArchived(datasetPid)
     } yield datasetPid
   }
 
   def assertNoVirusesInDeposit()(implicit s: Settings): Try[Unit] = Try {
     import scala.sys.process._
-    val cmd = s"/usr/bin/clamscan -r -i ${s.bagitDir.getParentFile}"
+    val cmd = s"/usr/bin/clamscan -r -i ${s.depositDir}"
     log.info(s"Scanning for viruses: $cmd")
     var output = ""
     val exit = Process(cmd)! ProcessLogger(line => output += line + "\n")
@@ -119,9 +121,13 @@ object EasyIngestFlow {
      EasyArchiveBag.run(archivebag.Settings(
        username = s.storageUser,
        password = s.storagePassword,
-       bagDir = s.bagitDir,
+       bagDir = getBagDir(s.depositDir).get,
        storageDepositService =  s.storageServiceUrl)
      )
+  }
+
+  def getBagDir(depositDir: File): Try[File] = Try {
+    depositDir.listFiles.find(f => f.isDirectory && f.getName != ".git").get
   }
 
   def stageDataset(urn: String, datasetDir: String)(implicit s: Settings): Try[Unit] = {
@@ -129,7 +135,7 @@ object EasyIngestFlow {
     EasyStageDataset.run(stage.Settings(
       ownerId = s.ownerId,
       bagStorageLocation = s.bagStorageLocation + "/" + datasetDir,
-      bagitDir = s.bagitDir,
+      bagitDir = getBagDir(s.depositDir).get,
       sdoSetDir = s.sdoSetDir,
       URN = urn,
       DOI = s.DOI,
@@ -164,20 +170,28 @@ object EasyIngestFlow {
     FileUtils.deleteDirectory(s.sdoSetDir)
   }
 
-  def tagDepositAsArchived(datasetDir: String)(implicit s:Settings): Try[Unit] = Try {
+  def tagDepositAsArchived(datasetPid: String)(implicit s:Settings): Try[Unit] = Try {
     log.info("Tagging deposit as ARCHIVED")
-    Git.open(s.bagitDir.getParentFile)
+    Git.open(s.depositDir)
       .tag()
       .setName("state=ARCHIVED")
-      .setMessage(s.bagStorageLocation + "/" + datasetDir).call()
+      .setMessage(s.datasetAccessBaseUrl + "/" + datasetPid).call()
+  }
+
+  def setDepositStateToArchived(datasetPid: String)(implicit s: Settings): Try[Unit] = Try {
+    DepositState.setDepositState("ARCHIVED", s.datasetAccessBaseUrl + "/" + datasetPid)
   }
 
   def tagDepositAsRejected(reason: String)(implicit s:Settings): Try[Unit] = Try {
     log.info("Tagging deposit as REJECTED")
-    Git.open(s.bagitDir.getParentFile)
+    Git.open(s.depositDir)
       .tag()
       .setName("state=REJECTED")
       .setMessage(reason).call()
+  }
+
+  def setDepositStateToRejected(reason: String)(implicit s: Settings): Try[Unit] = Try {
+    DepositState.setDepositState("REJECTED", reason)
   }
 
   def getDatasetPid(pidDictionary: PidDictionary): Try[String] = {
