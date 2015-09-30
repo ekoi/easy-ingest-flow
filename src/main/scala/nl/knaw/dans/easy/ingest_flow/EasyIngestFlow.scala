@@ -32,6 +32,7 @@ import nl.knaw.dans.easy.stage.EasyStageDataset
 import org.apache.commons.configuration.PropertiesConfiguration
 import org.apache.commons.io.FileUtils
 import org.eclipse.jgit.api.Git
+import org.joda.time.DateTime
 import org.slf4j.LoggerFactory
 
 import scala.annotation.tailrec
@@ -134,6 +135,7 @@ object EasyIngestFlow {
     log.info("Staging dataset")
     EasyStageDataset.run(stage.Settings(
       ownerId = s.ownerId,
+      submissionTimestamp = getSubmissionTimestamp(s.depositDir),
       bagStorageLocation = s.bagStorageLocation + "/" + datasetDir,
       bagitDir = getBagDir(s.depositDir).get,
       sdoSetDir = s.sdoSetDir,
@@ -143,6 +145,9 @@ object EasyIngestFlow {
       fedoraUser = s.fedoraCredentials.getUsername,
       fedoraPassword =  s.fedoraCredentials.getPassword))
   }
+
+  def getSubmissionTimestamp(depositDir: File): String =
+    new DateTime(new File(depositDir, "state.properties").lastModified).toString
 
   def ingestDataset()(implicit s: Settings): Try[PidDictionary] = {
     log.info("Ingesting staged digital object into Fedora")
