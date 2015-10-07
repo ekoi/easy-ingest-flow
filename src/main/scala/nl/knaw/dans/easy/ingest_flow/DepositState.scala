@@ -11,9 +11,9 @@ object DepositState {
   case class State(state: String, description: String, timeStamp: String)
 
   def setDepositState(state: String, description: String)(implicit s: Settings): Try[Unit] = Try {
-    val stateFile = new PropertiesConfiguration(new File(s.depositDir, "state.properties"))
-    stateFile.setProperty("state", state)
-    stateFile.setProperty("description", description)
+    val stateFile = new PropertiesConfiguration(new File(s.depositDir, "deposit.properties"))
+    stateFile.setProperty("state.label", state)
+    stateFile.setProperty("state.description", description)
     stateFile.save()
   }
 }

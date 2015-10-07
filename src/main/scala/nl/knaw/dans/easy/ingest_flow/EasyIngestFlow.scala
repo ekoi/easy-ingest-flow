@@ -72,7 +72,7 @@ object EasyIngestFlow {
         props.getString("fcrepo.password")),
       numSyncTries = props.getInt("sync.num-tries"),
       syncDelay = props.getInt("sync.delay"),
-      ownerId = props.getString("easy.owner"),
+      ownerId = getUserId(conf.depositDir()),
       datasetAccessBaseUrl = props.getString("easy.dataset-access-base-url"),
       bagStorageLocation = props.getString("storage.base-url"),
       depositDir = conf.depositDir(),
@@ -89,6 +89,8 @@ object EasyIngestFlow {
         log.error(e.getMessage)
     }
   }
+
+  def getUserId(depositDir: File): String = new PropertiesConfiguration(new File(depositDir, "deposit.properties")).getString("depositor.userId")
 
   def run()(implicit s: Settings): Try[String] = {
     for {
@@ -147,7 +149,7 @@ object EasyIngestFlow {
   }
 
   def getSubmissionTimestamp(depositDir: File): String =
-    new DateTime(new File(depositDir, "state.properties").lastModified).toString
+    new DateTime(new File(depositDir, "deposit.properties").lastModified).toString
 
   def ingestDataset()(implicit s: Settings): Try[PidDictionary] = {
     log.info("Ingesting staged digital object into Fedora")
