@@ -105,7 +105,8 @@ object EasyIngestFlow {
       _ <- updateSolr(datasetPid)
       _ <- deleteSdoSetDir()
       _ <- setDepositStateToArchived(datasetPid)
-      _ <- tagDepositAsArchived(datasetPid)
+      _ <- deleteBag()
+      _ <- deleteGitRepo()
     } yield datasetPid
   }
 
@@ -177,16 +178,22 @@ object EasyIngestFlow {
     FileUtils.deleteDirectory(s.sdoSetDir)
   }
 
-  def tagDepositAsArchived(datasetPid: String)(implicit s:Settings): Try[Unit] = Try {
-    log.info("Tagging deposit as ARCHIVED")
-    Git.open(s.depositDir)
-      .tag()
-      .setName("state=ARCHIVED")
-      .setMessage(s.datasetAccessBaseUrl + "/" + datasetPid).call()
+  def deleteBag()(implicit s: Settings): Try[Unit] = Try {
+    val bag = getBagDir(s.depositDir).get
+    log.info(s"Removing deposit data at $bag")
+    FileUtils.deleteDirectory(bag)
   }
 
   def setDepositStateToArchived(datasetPid: String)(implicit s: Settings): Try[Unit] = Try {
     DepositState.setDepositState("ARCHIVED", s.datasetAccessBaseUrl + "/" + datasetPid)
+  }
+
+  def deleteGitRepo()(implicit s: Settings): Try[Unit] = Try {
+    val gitDir = new File(s.depositDir, ".git")
+    if(gitDir.exists) {
+      log.info(s"Removing git repo at $gitDir ")
+      FileUtils.deleteDirectory(gitDir)
+    }
   }
 
   def tagDepositAsRejected(reason: String)(implicit s:Settings): Try[Unit] = Try {
