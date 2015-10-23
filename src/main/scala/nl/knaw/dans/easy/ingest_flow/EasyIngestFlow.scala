@@ -36,7 +36,9 @@ import org.joda.time.DateTime
 import org.slf4j.LoggerFactory
 
 import scala.annotation.tailrec
+import scala.sys.error
 import scala.util.{Failure, Success, Try}
+import scala.xml.{Elem, XML}
 import scalaj.http.Http
 
 object EasyIngestFlow {
@@ -53,10 +55,10 @@ object EasyIngestFlow {
                       bagStorageLocation: String,
                       depositDir: File,
                       sdoSetDir: File,
-                      DOI: String,
                       postgresURL: String,
                       solr: String,
-                      pidgen: String)
+                      pidgen: String,
+                      dansNamespacePart: String)
 
   def main(args: Array[String]) {
     val conf = new Conf(args)
@@ -77,10 +79,10 @@ object EasyIngestFlow {
       bagStorageLocation = props.getString("storage.base-url"),
       depositDir = conf.depositDir(),
       sdoSetDir = new File(props.getString("staging.root-dir"), conf.depositDir().getName),
-      DOI = "10.1000/xyz123", // TODO: get this from the deposit metadata
       postgresURL = props.getString("fsrdb.connection-url"),
       solr = props.getString("solr.update-url"),
-      pidgen = props.getString("pid-generator.url"))
+      pidgen = props.getString("pid-generator.url"),
+      dansNamespacePart = "/dans-")
 
     run() match {
       case Success(datasetPid) => log.info(s"Finished, dataset pid: $datasetPid")
@@ -96,8 +98,9 @@ object EasyIngestFlow {
     for {
       _ <- assertNoVirusesInDeposit()
       urn <- requestURN()
+      (doi, otherAccessDOI) <- fetchDOI
       datasetDir <- archiveBag()
-      _ <- stageDataset(urn, datasetDir)
+      _ <- stageDataset(datasetDir, urn, doi, otherAccessDOI)
       pidDictionary <- ingestDataset()
       datasetPid <- getDatasetPid(pidDictionary)
       _ <- waitForFedoraSync(datasetPid, pidDictionary, s.numSyncTries, s.syncDelay)
@@ -133,7 +136,7 @@ object EasyIngestFlow {
     depositDir.listFiles.find(f => f.isDirectory && f.getName != ".git").get
   }
 
-  def stageDataset(urn: String, datasetDir: String)(implicit s: Settings): Try[Unit] = {
+  def stageDataset(datasetDir: String, urn: String, doi: String, otherAccessDOI: Boolean)(implicit s: Settings): Try[Unit] = {
     log.info("Staging dataset")
     EasyStageDataset.run(stage.Settings(
       ownerId = s.ownerId,
@@ -142,7 +145,8 @@ object EasyIngestFlow {
       bagitDir = getBagDir(s.depositDir).get,
       sdoSetDir = s.sdoSetDir,
       URN = urn,
-      DOI = s.DOI,
+      DOI = doi,
+      otherAccessDOI = otherAccessDOI,
       fedoraUrl = s.fedoraCredentials.getBaseUrl,
       fedoraUser = s.fedoraCredentials.getUsername,
       fedoraPassword =  s.fedoraCredentials.getPassword))
@@ -219,6 +223,40 @@ object EasyIngestFlow {
         log.info(s"Requested URN: $urn")
         Success(urn)
       } else Failure(new RuntimeException(s"PID Generator failed: ${r.body}")))
+
+  def fetchDOI(implicit s: Settings): Try[(String, Boolean)] =
+    Try {
+      s.depositDir.listFiles()
+        .find(_.isDirectory)
+        .map(bagDir => XML.loadFile(new File(bagDir, "metadata/dataset.xml")))
+        .get
+    }.flatMap(queryDOI)
+
+  def queryDOI(xml: Elem)(implicit s: Settings): Try[(String, Boolean)] = {
+    val doiNodes = for {
+      id <- xml \ "DDM" \ "dcmiMetadata" \ "identifier"
+      if (id \ "@type").text == "DOI"
+    } yield id.text
+
+    doiNodes match {
+      case Seq() => Failure(new RuntimeException("Dataset metadata doesn't contain a DOI"))
+      case Seq(doi) =>
+        val isOtherAccessDOI = !doi.contains(s.dansNamespacePart)
+        if (isOtherAccessDOI)
+          checkOtherAccess(xml).map(_ => (doi, true))
+        else
+          Success((doi, false))
+      case dois => Failure(new RuntimeException(s"Dataset metadata contains more than one DOI: $dois"))
+    }
+  }
+
+  def checkOtherAccess(xml: Elem): Try[Unit] = Try {
+    (xml \ "DDM" \ "profile" \ "accessRights").map(_.text) match {
+      case Seq() => error("Dataset metadata contains no access rights")
+      case Seq(ar) => if (ar != "NO_ACCESS") error("Dataset DOI is other access but accessrights aren't set to NO_ACCCESS")
+      case multiple => error(s"Dataset metadata contains multiple access rights: $multiple")
+    }
+  }
 
   def waitForFedoraSync(datasetPid: String, pidDictionary: PidDictionary, numTries: Int, delayMillis: Long)(implicit s: Settings): Try[Unit] = {
     val expectedPids = pidDictionary.values.toSet - datasetPid
