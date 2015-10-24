@@ -62,7 +62,7 @@ object EasyIngestFlow {
 
   def main(args: Array[String]) {
     val conf = new Conf(args)
-    val homeDir = new File(System.getenv("EASY_INGEST_FLOW_HOME"))
+    val homeDir = new File(System.getenv("app.home"))
     val props = new PropertiesConfiguration(new File(homeDir, "cfg/application.properties"))
     implicit val settings = Settings(
       storageUser = props.getString("storage.user"),
