@@ -1,5 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-java -Dlogback.statusListenerClass=ch.qos.logback.core.status.OnConsoleStatusListener \
-     -Dlogback.configurationFile=$EASY_INGEST_FLOW_HOME/cfg/logback.xml \
-     -jar $EASY_INGEST_FLOW_HOME/bin/easy-ingest-flow.jar $@
+BINPATH=`readlink -f $0`
+APPHOME=`dirname \`dirname $BINPATH \``
+
+java -Dlogback.configurationFile=$APPHOME/cfg/logback.xml \
+     -Dapp.home=$APPHOME \
+     -jar $APPHOME/bin/easy-ingest-flow.jar $@
