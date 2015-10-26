@@ -233,8 +233,7 @@ object EasyIngestFlow {
 
   def fetchDOI(implicit s: Settings): Try[(String, Boolean)] =
     Try {
-      s.depositDir.listFiles()
-        .find(_.isDirectory)
+      getBagDir(s.depositDir)
         .map(bagDir => XML.loadFile(new File(bagDir, "metadata/dataset.xml")))
         .get
     }.flatMap(queryDOI)
