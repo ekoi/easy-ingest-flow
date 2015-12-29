@@ -29,6 +29,7 @@ import nl.knaw.dans.easy.ingest.EasyIngest
 import nl.knaw.dans.easy.ingest.EasyIngest.PidDictionary
 import nl.knaw.dans.easy.solr.EasyUpdateSolrIndex
 import nl.knaw.dans.easy.stage.EasyStageDataset
+import nl.knaw.dans.easy.stage.lib.Fedora
 import org.apache.commons.configuration.PropertiesConfiguration
 import org.apache.commons.io.FileUtils
 import org.eclipse.jgit.api.Git
@@ -62,8 +63,9 @@ object EasyIngestFlow {
 
   def main(args: Array[String]) {
     val conf = new Conf(args)
-    val homeDir = new File(System.getenv("app.home"))
+    val homeDir = new File(System.getProperty("app.home"))
     val props = new PropertiesConfiguration(new File(homeDir, "cfg/application.properties"))
+    Fedora.setFedoraConnectionSettings(props.getString("fcrepo.url"), props.getString("fcrepo.user"), props.getString("fcrepo.password"))
     implicit val settings = Settings(
       storageUser = props.getString("storage.user"),
       storagePassword = props.getString("storage.password"),
@@ -87,6 +89,7 @@ object EasyIngestFlow {
     run() match {
       case Success(datasetPid) => log.info(s"Finished, dataset pid: $datasetPid")
       case Failure(e) =>
+        setDepositStateToRejected(e.getMessage)
         tagDepositAsRejected(e.getMessage)
         log.error(e.getMessage)
     }
@@ -97,8 +100,8 @@ object EasyIngestFlow {
   def run()(implicit s: Settings): Try[String] = {
     for {
       _ <- assertNoVirusesInDeposit()
-      urn <- requestURN()
-      (doi, otherAccessDOI) <- fetchDOI
+      urn <- requestUrn()
+      (doi, otherAccessDOI) <- getDoi
       datasetDir <- archiveBag()
       _ <- stageDataset(datasetDir, urn, doi, otherAccessDOI)
       pidDictionary <- ingestDataset()
@@ -209,6 +212,7 @@ object EasyIngestFlow {
   }
 
   def setDepositStateToRejected(reason: String)(implicit s: Settings): Try[Unit] = Try {
+    log.info("Setting deposit state to REJECTED")
     DepositState.setDepositState("REJECTED", reason)
   }
 
@@ -219,42 +223,36 @@ object EasyIngestFlow {
     }
   }
 
-  def requestURN()(implicit s: Settings): Try[String] =
+  def requestUrn()(implicit s: Settings): Try[String] = requestPid("urn")
+
+  def requestDoi()(implicit s: Settings): Try[String] = requestPid("doi")
+
+  def requestPid(pidType: String)(implicit s: Settings): Try[String] =
     Try {
-      Http(s.pidgen)
+      Http(s"${s.pidgen}?type=$pidType" )
         .timeout(connTimeoutMs = 10000, readTimeoutMs = 50000)
         .postForm.asString
     }.flatMap(r =>
       if (r.code == 200) {
-        val urn = r.body
-        log.info(s"Requested URN: $urn")
-        Success(urn)
+        val pid = r.body
+        log.info(s"Requested ${pidType.toUpperCase}: $pid")
+        Success(pid)
       } else Failure(new RuntimeException(s"PID Generator failed: ${r.body}")))
 
-  def fetchDOI(implicit s: Settings): Try[(String, Boolean)] =
-    Try {
-      getBagDir(s.depositDir)
-        .map(bagDir => XML.loadFile(new File(bagDir, "metadata/dataset.xml")))
-        .get
-    }.flatMap(queryDOI)
-
-  def queryDOI(xml: Elem)(implicit s: Settings): Try[(String, Boolean)] = {
-    val doiNodes = for {
-      id <- xml \ "DDM" \ "dcmiMetadata" \ "identifier"
-      if (id \ "@type").text == "DOI"
-    } yield id.text
-
-    doiNodes match {
-      case Seq() => Failure(new RuntimeException("Dataset metadata doesn't contain a DOI"))
-      case Seq(doi) =>
-        val isOtherAccessDOI = !doi.contains(s.dansNamespacePart)
-        if (isOtherAccessDOI)
-          checkOtherAccess(xml).map(_ => (doi, true))
-        else
-          Success((doi, false))
-      case dois => Failure(new RuntimeException(s"Dataset metadata contains more than one DOI: $dois"))
+  def getDoi(implicit s: Settings): Try[(String, Boolean)] =
+    if(s.ownerId == "mendeleydata") {
+      getBagDir(s.depositDir) match {
+        case Success(bag) =>
+          val xml = XML.loadFile(new File(bag, "metadata/dataset.xml"))
+          val ids = xml \ "DDM" \ "dcmiMetadata" \ "identifier"
+          val dois = ids.map(n => (n \ "@type").text).filter(_ == "DOI")
+          if(dois.size == 1) Try(dois(0), true)
+          else if(dois.size == 0) Failure(new RuntimeException("Dataset metadata doesn't contain a DOI"))
+          else Failure(new RuntimeException(s"Dataset metadata contains more than one DOI: $dois"))
+        case Failure(e) => Failure(new RuntimeException(s"Could not find bag in deposit: ${s.depositDir}"))
+      }
     }
-  }
+    else Try(requestDoi().get, false)
 
   def checkOtherAccess(xml: Elem): Try[Unit] = Try {
     (xml \ "DDM" \ "profile" \ "accessRights").map(_.text) match {
