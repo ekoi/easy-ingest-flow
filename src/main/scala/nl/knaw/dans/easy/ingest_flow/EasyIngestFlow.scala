@@ -39,7 +39,7 @@ import org.slf4j.LoggerFactory
 import scala.annotation.tailrec
 import scala.sys.error
 import scala.util.{Failure, Success, Try}
-import scala.xml.{Elem, XML}
+import scala.xml.{Node, Elem, XML}
 import scalaj.http.Http
 
 object EasyIngestFlow {
@@ -100,8 +100,10 @@ object EasyIngestFlow {
   def run()(implicit s: Settings): Try[String] = {
     for {
       _ <- assertNoVirusesInDeposit()
+      xml <- loadDdm()
+      _ <- assertNoAccessSet(xml)
       urn <- requestUrn()
-      (doi, otherAccessDOI) <- getDoi
+      (doi, otherAccessDOI) <- getDoi(xml)
       storageDatasetDir <- archiveBag()
       _ <- stageDataset(storageDatasetDir, urn, doi, otherAccessDOI)
       pidDictionary <- ingestDataset()
@@ -124,6 +126,21 @@ object EasyIngestFlow {
     val exit = Process(cmd)! ProcessLogger(line => output += line + "\n")
     if(exit > 0) throw new RuntimeException(s"Detected a virus, clamscan output:\n$output")
     log.info("No viruses found")
+  }
+
+  def loadDdm()(implicit s: Settings): Try[Elem] = Try {
+    getBagDir(s.depositDir) match {
+      case Success(bag) => XML.loadFile(new File(bag, "metadata/dataset.xml"))
+      case Failure(e) => throw new RuntimeException(s"Could not find bag in deposit: ${s.depositDir}")
+    }
+  }
+
+  def assertNoAccessSet(xml: Elem): Try[Unit] = Try {
+    (xml \\ "DDM" \ "profile" \ "accessRights").map(_.text) match {
+      case Seq() => error("Dataset metadata contains no access rights")
+      case Seq(ar) => if (ar != "NO_ACCESS") error("Dataset DOI is other access but accessrights are NOT set to NO_ACCESS")
+      case multiple => error(s"Dataset metadata contains multiple access rights: $multiple")
+    }
   }
 
   def archiveBag()(implicit s: Settings): Try[String] = {
@@ -239,28 +256,27 @@ object EasyIngestFlow {
         Success(pid)
       } else Failure(new RuntimeException(s"PID Generator failed: ${r.body}")))
 
-  def getDoi(implicit s: Settings): Try[(String, Boolean)] =
-    if(s.ownerId == "mendeleydata") {
-      getBagDir(s.depositDir) match {
-        case Success(bag) =>
-          val xml = XML.loadFile(new File(bag, "metadata/dataset.xml"))
-          val ids = xml \ "DDM" \ "dcmiMetadata" \ "identifier"
-          val dois = ids.map(n => (n \ "@type").text).filter(_ == "DOI")
-          if(dois.size == 1) Try(dois(0), true)
-          else if(dois.size == 0) Failure(new RuntimeException("Dataset metadata doesn't contain a DOI"))
-          else Failure(new RuntimeException(s"Dataset metadata contains more than one DOI: $dois"))
-        case Failure(e) => Failure(new RuntimeException(s"Could not find bag in deposit: ${s.depositDir}"))
-      }
-    }
-    else Try(requestDoi().get, false)
-
-  def checkOtherAccess(xml: Elem): Try[Unit] = Try {
-    (xml \ "DDM" \ "profile" \ "accessRights").map(_.text) match {
-      case Seq() => error("Dataset metadata contains no access rights")
-      case Seq(ar) => if (ar != "NO_ACCESS") error("Dataset DOI is other access but accessrights aren't set to NO_ACCCESS")
-      case multiple => error(s"Dataset metadata contains multiple access rights: $multiple")
-    }
+  def getDoi(xml: Elem)(implicit s: Settings): Try[(String, Boolean)] = Try {
+    if (s.ownerId == "mendeleydata") (getDoiFromDdm(xml).get, true)
+    else (requestDoi().get, false)
   }
+
+  def getDoiFromDdm(xml: Elem): Try[String] = {
+    val ids = xml \\ "DDM" \ "dcmiMetadata" \ "identifier"
+    val dois = ids.filter(hasXsiType(_, "http://easy.dans.knaw.nl/schemas/vocab/identifier-type/", "DOI"))
+    if(dois.size == 1) Try(dois(0).text)
+    else if(dois.size == 0) Failure(new RuntimeException("Dataset metadata doesn't contain a DOI"))
+    else Failure(new RuntimeException(s"Dataset metadata contains more than one DOI: $dois"))
+  }
+
+  def hasXsiType(e: Node, attributeNamespace: String, attributeValue: String): Boolean =
+    e.head.attribute("http://www.w3.org/2001/XMLSchema-instance", "type") match {
+      case Some(Seq(n)) => n.text.split("\\:") match {
+        case Array(pref, label) => e.head.getNamespace(pref) == attributeNamespace && label == attributeValue
+        case _ => false
+      }
+      case _ => false
+    }
 
   def waitForFedoraSync(datasetPid: String, pidDictionary: PidDictionary, numTries: Int, delayMillis: Long)(implicit s: Settings): Try[Unit] = {
     val expectedPids = pidDictionary.values.toSet - datasetPid
