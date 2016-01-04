@@ -29,6 +29,7 @@ import nl.knaw.dans.easy.ingest.EasyIngest
 import nl.knaw.dans.easy.ingest.EasyIngest.PidDictionary
 import nl.knaw.dans.easy.solr.EasyUpdateSolrIndex
 import nl.knaw.dans.easy.stage.EasyStageDataset
+import nl.knaw.dans.easy.stage.lib.Fedora
 import org.apache.commons.configuration.PropertiesConfiguration
 import org.apache.commons.io.FileUtils
 import org.eclipse.jgit.api.Git
@@ -38,7 +39,7 @@ import org.slf4j.LoggerFactory
 import scala.annotation.tailrec
 import scala.sys.error
 import scala.util.{Failure, Success, Try}
-import scala.xml.{Elem, XML}
+import scala.xml.{Node, Elem, XML}
 import scalaj.http.Http
 
 object EasyIngestFlow {
@@ -62,8 +63,9 @@ object EasyIngestFlow {
 
   def main(args: Array[String]) {
     val conf = new Conf(args)
-    val homeDir = new File(System.getenv("app.home"))
+    val homeDir = new File(System.getProperty("app.home"))
     val props = new PropertiesConfiguration(new File(homeDir, "cfg/application.properties"))
+    Fedora.setFedoraConnectionSettings(props.getString("fcrepo.url"), props.getString("fcrepo.user"), props.getString("fcrepo.password"))
     implicit val settings = Settings(
       storageUser = props.getString("storage.user"),
       storagePassword = props.getString("storage.password"),
@@ -87,6 +89,7 @@ object EasyIngestFlow {
     run() match {
       case Success(datasetPid) => log.info(s"Finished, dataset pid: $datasetPid")
       case Failure(e) =>
+        setDepositStateToRejected(e.getMessage)
         tagDepositAsRejected(e.getMessage)
         log.error(e.getMessage)
     }
@@ -97,10 +100,12 @@ object EasyIngestFlow {
   def run()(implicit s: Settings): Try[String] = {
     for {
       _ <- assertNoVirusesInDeposit()
-      urn <- requestURN()
-      (doi, otherAccessDOI) <- fetchDOI
-      datasetDir <- archiveBag()
-      _ <- stageDataset(datasetDir, urn, doi, otherAccessDOI)
+      xml <- loadDdm()
+      _ <- assertNoAccessSet(xml)
+      urn <- requestUrn()
+      (doi, otherAccessDOI) <- getDoi(xml)
+      storageDatasetDir <- archiveBag()
+      _ <- stageDataset(storageDatasetDir, urn, doi, otherAccessDOI)
       pidDictionary <- ingestDataset()
       datasetPid <- getDatasetPid(pidDictionary)
       _ <- waitForFedoraSync(datasetPid, pidDictionary, s.numSyncTries, s.syncDelay)
@@ -121,6 +126,21 @@ object EasyIngestFlow {
     val exit = Process(cmd)! ProcessLogger(line => output += line + "\n")
     if(exit > 0) throw new RuntimeException(s"Detected a virus, clamscan output:\n$output")
     log.info("No viruses found")
+  }
+
+  def loadDdm()(implicit s: Settings): Try[Elem] = Try {
+    getBagDir(s.depositDir) match {
+      case Success(bag) => XML.loadFile(new File(bag, "metadata/dataset.xml"))
+      case Failure(e) => throw new RuntimeException(s"Could not find bag in deposit: ${s.depositDir}")
+    }
+  }
+
+  def assertNoAccessSet(xml: Elem): Try[Unit] = Try {
+    (xml \\ "DDM" \ "profile" \ "accessRights").map(_.text) match {
+      case Seq() => error("Dataset metadata contains no access rights")
+      case Seq(ar) => if (ar != "NO_ACCESS") error("Dataset DOI is other access but accessrights are NOT set to NO_ACCESS")
+      case multiple => error(s"Dataset metadata contains multiple access rights: $multiple")
+    }
   }
 
   def archiveBag()(implicit s: Settings): Try[String] = {
@@ -209,6 +229,7 @@ object EasyIngestFlow {
   }
 
   def setDepositStateToRejected(reason: String)(implicit s: Settings): Try[Unit] = Try {
+    log.info("Setting deposit state to REJECTED")
     DepositState.setDepositState("REJECTED", reason)
   }
 
@@ -219,50 +240,43 @@ object EasyIngestFlow {
     }
   }
 
-  def requestURN()(implicit s: Settings): Try[String] =
+  def requestUrn()(implicit s: Settings): Try[String] = requestPid("urn")
+
+  def requestDoi()(implicit s: Settings): Try[String] = requestPid("doi")
+
+  def requestPid(pidType: String)(implicit s: Settings): Try[String] =
     Try {
-      Http(s.pidgen)
+      Http(s"${s.pidgen}?type=$pidType" )
         .timeout(connTimeoutMs = 10000, readTimeoutMs = 50000)
         .postForm.asString
     }.flatMap(r =>
       if (r.code == 200) {
-        val urn = r.body
-        log.info(s"Requested URN: $urn")
-        Success(urn)
+        val pid = r.body
+        log.info(s"Requested ${pidType.toUpperCase}: $pid")
+        Success(pid)
       } else Failure(new RuntimeException(s"PID Generator failed: ${r.body}")))
 
-  def fetchDOI(implicit s: Settings): Try[(String, Boolean)] =
-    Try {
-      getBagDir(s.depositDir)
-        .map(bagDir => XML.loadFile(new File(bagDir, "metadata/dataset.xml")))
-        .get
-    }.flatMap(queryDOI)
-
-  def queryDOI(xml: Elem)(implicit s: Settings): Try[(String, Boolean)] = {
-    val doiNodes = for {
-      id <- xml \ "DDM" \ "dcmiMetadata" \ "identifier"
-      if (id \ "@type").text == "DOI"
-    } yield id.text
-
-    doiNodes match {
-      case Seq() => Failure(new RuntimeException("Dataset metadata doesn't contain a DOI"))
-      case Seq(doi) =>
-        val isOtherAccessDOI = !doi.contains(s.dansNamespacePart)
-        if (isOtherAccessDOI)
-          checkOtherAccess(xml).map(_ => (doi, true))
-        else
-          Success((doi, false))
-      case dois => Failure(new RuntimeException(s"Dataset metadata contains more than one DOI: $dois"))
-    }
+  def getDoi(xml: Elem)(implicit s: Settings): Try[(String, Boolean)] = Try {
+    if (s.ownerId == "mendeleydata") (getDoiFromDdm(xml).get, true)
+    else (requestDoi().get, false)
   }
 
-  def checkOtherAccess(xml: Elem): Try[Unit] = Try {
-    (xml \ "DDM" \ "profile" \ "accessRights").map(_.text) match {
-      case Seq() => error("Dataset metadata contains no access rights")
-      case Seq(ar) => if (ar != "NO_ACCESS") error("Dataset DOI is other access but accessrights aren't set to NO_ACCCESS")
-      case multiple => error(s"Dataset metadata contains multiple access rights: $multiple")
-    }
+  def getDoiFromDdm(xml: Elem): Try[String] = {
+    val ids = xml \\ "DDM" \ "dcmiMetadata" \ "identifier"
+    val dois = ids.filter(hasXsiType(_, "http://easy.dans.knaw.nl/schemas/vocab/identifier-type/", "DOI"))
+    if(dois.size == 1) Try(dois(0).text)
+    else if(dois.size == 0) Failure(new RuntimeException("Dataset metadata doesn't contain a DOI"))
+    else Failure(new RuntimeException(s"Dataset metadata contains more than one DOI: $dois"))
   }
+
+  def hasXsiType(e: Node, attributeNamespace: String, attributeValue: String): Boolean =
+    e.head.attribute("http://www.w3.org/2001/XMLSchema-instance", "type") match {
+      case Some(Seq(n)) => n.text.split("\\:") match {
+        case Array(pref, label) => e.head.getNamespace(pref) == attributeNamespace && label == attributeValue
+        case _ => false
+      }
+      case _ => false
+    }
 
   def waitForFedoraSync(datasetPid: String, pidDictionary: PidDictionary, numTries: Int, delayMillis: Long)(implicit s: Settings): Try[Unit] = {
     val expectedPids = pidDictionary.values.toSet - datasetPid
