@@ -108,6 +108,7 @@ object EasyIngestFlow {
       urn <- requestUrn()
       (doi, otherAccessDOI) <- getDoi(xml)
       (storageDatasetDir, state) <- archiveBag()
+      _ = log.info(s"Archival storage service returned: $state")
       if state == STATE_SUBMITTED
       _ <- stageDataset(storageDatasetDir, urn, doi, otherAccessDOI)
       pidDictionary <- ingestDataset()
