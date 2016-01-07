@@ -41,6 +41,7 @@ import scalaj.http.Http
 
 object EasyIngestFlow {
   val log = LoggerFactory.getLogger(getClass)
+  val STATE_SUBMITTED = "SUBMITTED"
 
   case class Settings(storageUser: String,
                       storagePassword: String,
@@ -52,6 +53,8 @@ object EasyIngestFlow {
                       datasetAccessBaseUrl: String,
                       bagStorageLocation: String,
                       depositDir: File,
+                      checkInterval: Int,
+                      maxCheckCount: Int,
                       sdoSetDir: File,
                       postgresURL: String,
                       solr: String,
@@ -77,6 +80,8 @@ object EasyIngestFlow {
       datasetAccessBaseUrl = props.getString("easy.dataset-access-base-url"),
       bagStorageLocation = props.getString("storage.base-url"),
       depositDir = conf.depositDir(),
+      checkInterval = props.getInt("check.interval"),
+      maxCheckCount = props.getInt("max.check.count"),
       sdoSetDir = new File(props.getString("staging.root-dir"), conf.depositDir().getName),
       postgresURL = props.getString("fsrdb.connection-url"),
       solr = props.getString("solr.update-url"),
@@ -101,7 +106,9 @@ object EasyIngestFlow {
       _ <- assertNoAccessSet(xml)
       urn <- requestUrn()
       (doi, otherAccessDOI) <- getDoi(xml)
-      storageDatasetDir <- archiveBag()
+      (storageDatasetDir, state) <- archiveBag()
+      _ = log.info(s"Archival storage service returned: $state")
+      if state == STATE_SUBMITTED
       _ <- stageDataset(storageDatasetDir, urn, doi, otherAccessDOI)
       pidDictionary <- ingestDataset()
       datasetPid <- getDatasetPid(pidDictionary)
@@ -140,11 +147,13 @@ object EasyIngestFlow {
     }
   }
 
-  def archiveBag()(implicit s: Settings): Try[String] = {
+  def archiveBag()(implicit s: Settings): Try[(String, String)] = {
     log.info("Sending bag to archival storage")
-     EasyArchiveBag.run(archivebag.Settings(
+    EasyArchiveBag.run(archivebag.Settings(
        username = s.storageUser,
        password = s.storagePassword,
+       checkInterval=s.checkInterval,
+       maxCheckCount=s.maxCheckCount,
        bagDir = getBagDir(s.depositDir).get,
        storageDepositService =  s.storageServiceUrl)
      )
