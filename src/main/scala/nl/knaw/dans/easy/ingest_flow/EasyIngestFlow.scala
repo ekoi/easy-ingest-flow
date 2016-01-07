@@ -57,6 +57,7 @@ object EasyIngestFlow {
                       bagStorageLocation: String,
                       depositDir: File,
                       checkInterval: Int,
+                      maxCheckCount: Int,
                       sdoSetDir: File,
                       postgresURL: String,
                       solr: String,
@@ -83,6 +84,7 @@ object EasyIngestFlow {
       bagStorageLocation = props.getString("storage.base-url"),
       depositDir = conf.depositDir(),
       checkInterval = props.getInt("check.interval"),
+      maxCheckCount = props.getInt("max.check.count"),
       sdoSetDir = new File(props.getString("staging.root-dir"), conf.depositDir().getName),
       postgresURL = props.getString("fsrdb.connection-url"),
       solr = props.getString("solr.update-url"),
@@ -154,6 +156,7 @@ object EasyIngestFlow {
        username = s.storageUser,
        password = s.storagePassword,
        checkInterval=s.checkInterval,
+       maxCheckCount=s.maxCheckCount,
        bagDir = getBagDir(s.depositDir).get,
        storageDepositService =  s.storageServiceUrl)
      )
