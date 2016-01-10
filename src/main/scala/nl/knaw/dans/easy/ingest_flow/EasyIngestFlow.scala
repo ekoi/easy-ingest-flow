@@ -51,15 +51,13 @@ object EasyIngestFlow {
                       syncDelay: Long,
                       ownerId: String,
                       datasetAccessBaseUrl: String,
-                      bagStorageLocation: String,
                       depositDir: File,
                       checkInterval: Int,
                       maxCheckCount: Int,
                       sdoSetDir: File,
                       postgresURL: String,
                       solr: String,
-                      pidgen: String,
-                      dansNamespacePart: String)
+                      pidgen: String)
 
   def main(args: Array[String]) {
     val conf = new Conf(args)
@@ -78,15 +76,13 @@ object EasyIngestFlow {
       syncDelay = props.getInt("sync.delay"),
       ownerId = getUserId(conf.depositDir()),
       datasetAccessBaseUrl = props.getString("easy.dataset-access-base-url"),
-      bagStorageLocation = props.getString("storage.base-url"),
       depositDir = conf.depositDir(),
       checkInterval = props.getInt("check.interval"),
       maxCheckCount = props.getInt("max.check.count"),
       sdoSetDir = new File(props.getString("staging.root-dir"), conf.depositDir().getName),
       postgresURL = props.getString("fsrdb.connection-url"),
       solr = props.getString("solr.update-url"),
-      pidgen = props.getString("pid-generator.url"),
-      dansNamespacePart = "/dans-")
+      pidgen = props.getString("pid-generator.url"))
 
     run() match {
       case Success(datasetPid) => log.info(s"Finished, dataset pid: $datasetPid")
@@ -106,16 +102,16 @@ object EasyIngestFlow {
       _ <- assertNoAccessSet(xml)
       urn <- requestUrn()
       (doi, otherAccessDOI) <- getDoi(xml)
-      (storageDatasetDir, state) <- archiveBag()
-      _ = log.info(s"Archival storage service returned: $state")
-      if state == STATE_SUBMITTED
-      _ <- stageDataset(storageDatasetDir, urn, doi, otherAccessDOI)
+      _ <- stageDataset(urn, doi, otherAccessDOI)
       pidDictionary <- ingestDataset()
       datasetPid <- getDatasetPid(pidDictionary)
       _ <- waitForFedoraSync(datasetPid, pidDictionary, s.numSyncTries, s.syncDelay)
       _ <- updateFsRdb(datasetPid)
       _ <- updateSolr(datasetPid)
       _ <- deleteSdoSetDir()
+      (storageDatasetDir, state) <- archiveBag(urn)
+      _ = log.info(s"Archival storage service returned: $state")
+      if state == STATE_SUBMITTED
       _ <- setDepositStateToArchived(datasetPid)
       _ <- deleteBag()
       _ <- deleteGitRepo()
@@ -147,7 +143,7 @@ object EasyIngestFlow {
     }
   }
 
-  def archiveBag()(implicit s: Settings): Try[(String, String)] = {
+  def archiveBag(urn: String)(implicit s: Settings): Try[(String, String)] = {
     log.info("Sending bag to archival storage")
     EasyArchiveBag.run(archivebag.Settings(
        username = s.storageUser,
@@ -155,6 +151,7 @@ object EasyIngestFlow {
        checkInterval=s.checkInterval,
        maxCheckCount=s.maxCheckCount,
        bagDir = getBagDir(s.depositDir).get,
+       slug = Some(urn),
        storageDepositService =  s.storageServiceUrl)
      )
   }
@@ -163,12 +160,11 @@ object EasyIngestFlow {
     depositDir.listFiles.find(f => f.isDirectory && f.getName != ".git").get
   }
 
-  def stageDataset(datasetDir: String, urn: String, doi: String, otherAccessDOI: Boolean)(implicit s: Settings): Try[Unit] = {
+  def stageDataset(urn: String, doi: String, otherAccessDOI: Boolean)(implicit s: Settings): Try[Unit] = {
     log.info("Staging dataset")
     EasyStageDataset.run(stage.Settings(
       ownerId = s.ownerId,
       submissionTimestamp = getSubmissionTimestamp(s.depositDir),
-      bagStorageLocation = s.bagStorageLocation + "/" + datasetDir,
       bagitDir = getBagDir(s.depositDir).get,
       sdoSetDir = s.sdoSetDir,
       URN = urn,
