@@ -259,7 +259,7 @@ object EasyIngestFlow {
       } else Failure(new RuntimeException(s"PID Generator failed: ${r.body}")))
 
   def getDoi(xml: Elem)(implicit s: Settings): Try[(String, Boolean)] = Try {
-    if (s.ownerId == "mendeleydata") (getDoiFromDdm(xml).get, true)
+    if (s.ownerId == "mendeleydata" || s.ownerId == "mendeltest") (getDoiFromDdm(xml).get, true)
     else (requestDoi().get, false)
   }
 
