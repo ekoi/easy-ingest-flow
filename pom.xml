@@ -27,14 +27,14 @@
     <artifactId>easy-ingest-flow</artifactId>
     <name>EASY Ingest Flow</name>
     <description>Ingest a bag from easy-deposit into the Fedora-managed archive</description>
-    <version>1.x-SNAPSHOT</version>
+    <version>1.0.1</version>
     <inceptionYear>2015-2016</inceptionYear>
     <properties>
         <main-class>nl.knaw.dans.easy.ingest_flow.EasyIngestFlow</main-class>
     </properties>
     <scm>
         <developerConnection>scm:git:https://github.com/DANS-KNAW/${project.artifactId}</developerConnection>
-        <tag>HEAD</tag>
+        <tag>v1.0.1</tag>
     </scm>
     <dependencies>
         <dependency>
