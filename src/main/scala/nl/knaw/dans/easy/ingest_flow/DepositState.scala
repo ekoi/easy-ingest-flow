@@ -17,7 +17,6 @@ package nl.knaw.dans.easy.ingest_flow
 
 import java.io.File
 
-import nl.knaw.dans.easy.ingest_flow.EasyIngestFlow.Settings
 import org.apache.commons.configuration.PropertiesConfiguration
 
 import scala.util.Try

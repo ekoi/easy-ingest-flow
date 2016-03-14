@@ -18,16 +18,14 @@ package nl.knaw.dans.easy.ingest_flow
 import java.io.File
 import java.net.URL
 
-import com.yourmediashelf.fedora.client.FedoraCredentials
 import nl.knaw.dans.easy._
 import nl.knaw.dans.easy.archivebag.EasyArchiveBag
 import nl.knaw.dans.easy.fsrdb.FsRdbUpdater
 import nl.knaw.dans.easy.ingest.EasyIngest
 import nl.knaw.dans.easy.ingest.EasyIngest.PidDictionary
+import nl.knaw.dans.easy.ingest_flow.{CommandLineOptions => cmd}
 import nl.knaw.dans.easy.solr.EasyUpdateSolrIndex
 import nl.knaw.dans.easy.stage.EasyStageDataset
-import nl.knaw.dans.easy.stage.lib.Fedora
-import org.apache.commons.configuration.PropertiesConfiguration
 import org.apache.commons.io.FileUtils
 import org.eclipse.jgit.api.Git
 import org.joda.time.DateTime
@@ -43,57 +41,18 @@ object EasyIngestFlow {
   val log = LoggerFactory.getLogger(getClass)
   val STATE_SUBMITTED = "SUBMITTED"
 
-  case class Settings(storageUser: String,
-                      storagePassword: String,
-                      storageServiceUrl: URL,
-                      fedoraCredentials: FedoraCredentials,
-                      numSyncTries: Int,
-                      syncDelay: Long,
-                      ownerId: String,
-                      datasetAccessBaseUrl: String,
-                      depositDir: File,
-                      checkInterval: Int,
-                      maxCheckCount: Int,
-                      sdoSetDir: File,
-                      postgresURL: String,
-                      solr: String,
-                      pidgen: String)
-
   def main(args: Array[String]) {
-    val conf = new Conf(args)
-    val homeDir = new File(System.getProperty("app.home"))
-    val props = new PropertiesConfiguration(new File(homeDir, "cfg/application.properties"))
-    Fedora.setFedoraConnectionSettings(props.getString("fcrepo.url"), props.getString("fcrepo.user"), props.getString("fcrepo.password"))
-    implicit val settings = Settings(
-      storageUser = props.getString("storage.user"),
-      storagePassword = props.getString("storage.password"),
-      storageServiceUrl = new URL(props.getString("storage.service-url")),
-      fedoraCredentials = new FedoraCredentials(
-        props.getString("fcrepo.url"),
-        props.getString("fcrepo.user"),
-        props.getString("fcrepo.password")),
-      numSyncTries = props.getInt("sync.num-tries"),
-      syncDelay = props.getInt("sync.delay"),
-      ownerId = getUserId(conf.depositDir()),
-      datasetAccessBaseUrl = props.getString("easy.dataset-access-base-url"),
-      depositDir = conf.depositDir(),
-      checkInterval = props.getInt("check.interval"),
-      maxCheckCount = props.getInt("max.check.count"),
-      sdoSetDir = new File(props.getString("staging.root-dir"), conf.depositDir().getName),
-      postgresURL = props.getString("fsrdb.connection-url"),
-      solr = props.getString("solr.update-url"),
-      pidgen = props.getString("pid-generator.url"))
+    log.debug("Starting application.")
+    implicit val settings = cmd parse args
 
-    run() match {
-      case Success(datasetPid) => log.info(s"Finished, dataset pid: $datasetPid")
-      case Failure(e) =>
+    run()
+      .map(datasetPid => log.info(s"Finished, dataset pid: $datasetPid"))
+      .onError(e => {
         setDepositStateToRejected(e.getMessage)
         tagDepositAsRejected(e.getMessage)
         log.error(e.getMessage)
-    }
+      })
   }
-
-  def getUserId(depositDir: File): String = new PropertiesConfiguration(new File(depositDir, "deposit.properties")).getString("depositor.userId")
 
   def run()(implicit s: Settings): Try[String] = {
     for {
