@@ -70,4 +70,8 @@ package object ingest_flow {
   def getUserId(depositDir: File): String = {
     new PropertiesConfiguration(new File(depositDir, "deposit.properties")).getString("depositor.userId")
   }
+
+  def getBagDir(depositDir: File): Option[File] = {
+    depositDir.listFiles.find(f => f.isDirectory && f.getName != ".git")
+  }
 }

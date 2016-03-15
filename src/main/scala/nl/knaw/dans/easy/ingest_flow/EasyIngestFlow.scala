@@ -57,7 +57,7 @@ object EasyIngestFlow {
   def run()(implicit s: Settings): Try[String] = {
     for {
       _ <- assertNoVirusesInDeposit()
-      xml <- loadDdm()
+      xml <- loadDDM()
       _ <- assertNoAccessSet(xml)
       urn <- requestUrn()
       (doi, otherAccessDOI) <- getDoi(xml)
@@ -81,19 +81,19 @@ object EasyIngestFlow {
     import scala.sys.process._
     val cmd = s"/usr/bin/clamscan -r -i ${s.depositDir}"
     log.info(s"Scanning for viruses: $cmd")
-    var output = ""
-    val exit = Process(cmd)! ProcessLogger(line => output += line + "\n")
-    if(exit > 0) throw new RuntimeException(s"Detected a virus, clamscan output:\n$output")
+    val output = new StringBuilder
+    val exit = Process(cmd)! ProcessLogger(line => output ++= s"$line\n")
+    if(exit > 0) throw new RuntimeException(s"Detected a virus, clamscan output:\n${output.toString}")
     log.info("No viruses found")
   }
 
-  def loadDdm()(implicit s: Settings): Try[Elem] = Try {
-    getBagDir(s.depositDir) match {
-      case Success(bag) => XML.loadFile(new File(bag, "metadata/dataset.xml"))
-      case Failure(e) => throw new RuntimeException(s"Could not find bag in deposit: ${s.depositDir}")
-    }
+  def loadDDM()(implicit settings: Settings) = Try {
+    getBagDir(settings.depositDir)
+      .map(bag => XML.loadFile(new File(bag, "metadata/dataset.xml")))
+      .getOrElse(error(s"Could not find bag in deposit: ${settings.depositDir}"))
   }
 
+  // TODO this assertion fails when using this tool for ingesting multi-deposit (non-mendeley) datasets
   def assertNoAccessSet(xml: Elem): Try[Unit] = Try {
     (xml \\ "DDM" \ "profile" \ "accessRights").map(_.text) match {
       case Seq() => error("Dataset metadata contains no access rights")
@@ -102,6 +102,7 @@ object EasyIngestFlow {
     }
   }
 
+  // TODO deze moet niet als het niet van mendeley komt
   def archiveBag(urn: String)(implicit s: Settings): Try[(String, String)] = {
     log.info("Sending bag to archival storage")
     EasyArchiveBag.run(archivebag.Settings(
@@ -113,10 +114,6 @@ object EasyIngestFlow {
        slug = Some(urn),
        storageDepositService =  s.storageServiceUrl)
      )
-  }
-
-  def getBagDir(depositDir: File): Try[File] = Try {
-    depositDir.listFiles.find(f => f.isDirectory && f.getName != ".git").get
   }
 
   def stageDataset(urn: String, doi: String, otherAccessDOI: Boolean)(implicit s: Settings): Try[Unit] = {
@@ -205,6 +202,8 @@ object EasyIngestFlow {
 
   def requestDoi()(implicit s: Settings): Try[String] = requestPid("doi")
 
+  // TODO this should be an Observable: does network requests
+  // use https://github.com/ReactiveX/RxApacheHttp
   def requestPid(pidType: String)(implicit s: Settings): Try[String] =
     Try {
       Http(s"${s.pidgen}?type=$pidType" )
@@ -217,6 +216,9 @@ object EasyIngestFlow {
         Success(pid)
       } else Failure(new RuntimeException(s"PID Generator failed: ${r.body}")))
 
+  // TODO hardcoded ownerId's???
+  // TODO tuple -> case class or type definitions: more descriptive code
+  //      what does the Boolean or String mean? You can't derive that from the type definition
   def getDoi(xml: Elem)(implicit s: Settings): Try[(String, Boolean)] = Try {
     if (s.ownerId == "mendeleydata" || s.ownerId == "mendeltest") (getDoiFromDdm(xml).get, true)
     else (requestDoi().get, false)
@@ -226,7 +228,7 @@ object EasyIngestFlow {
     val ids = xml \\ "DDM" \ "dcmiMetadata" \ "identifier"
     val dois = ids.filter(hasXsiType(_, "http://easy.dans.knaw.nl/schemas/vocab/identifier-type/", "DOI"))
     if(dois.size == 1) Try(dois(0).text)
-    else if(dois.size == 0) Failure(new RuntimeException("Dataset metadata doesn't contain a DOI"))
+    else if(dois.isEmpty) Failure(new RuntimeException("Dataset metadata doesn't contain a DOI"))
     else Failure(new RuntimeException(s"Dataset metadata contains more than one DOI: $dois"))
   }
 
@@ -258,6 +260,7 @@ object EasyIngestFlow {
     loop(numTries)
   }
 
+  // TODO should return an Observable: does HTTP stuff
   def queryPids(datasetPid: String)(implicit s: Settings): Try[List[String]] = Try {
     val url = s"${s.fedoraCredentials.getBaseUrl}/risearch"
     val response = Http(url)
@@ -277,5 +280,4 @@ object EasyIngestFlow {
     response.body.lines.toList.drop(1)
       .map(_.replace("info:fedora/", ""))
   }
-
 }

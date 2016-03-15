@@ -22,8 +22,10 @@ import org.apache.commons.configuration.PropertiesConfiguration
 import scala.util.Try
 
 object DepositState {
+  // TODO no usage for this case class
   case class State(state: String, description: String, timeStamp: String)
 
+  // TODO move to package object?
   def setDepositState(state: String, description: String)(implicit s: Settings): Try[Unit] = Try {
     val stateFile = new PropertiesConfiguration(new File(s.depositDir, "deposit.properties"))
     stateFile.setProperty("state.label", state)
