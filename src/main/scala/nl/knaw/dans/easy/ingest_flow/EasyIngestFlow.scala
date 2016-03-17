@@ -192,10 +192,10 @@ object EasyIngestFlow {
   }
 
   def getDatasetPid(pidDictionary: PidDictionary): Try[String] = {
-    pidDictionary.values.find(_.startsWith("easy-dataset")) match {
-      case Some(pid) => Success(pid)
-      case None => Failure(new RuntimeException("SDO-set didn't contain a dataset object."))
-    }
+    pidDictionary.values
+      .find(_ startsWith "easy-dataset")
+      .map(Success(_))
+      .getOrElse(Failure(new RuntimeException("SDO-set didn't contain a dataset object.")))
   }
 
   def requestUrn()(implicit s: Settings): Try[String] = requestPid("urn")
@@ -217,7 +217,7 @@ object EasyIngestFlow {
       } else Failure(new RuntimeException(s"PID Generator failed: ${r.body}")))
 
   // TODO hardcoded ownerId's???
-  // TODO tuple -> case class or type definitions: more descriptive code
+  // TODO tuple -> case class or type aliasses: more descriptive code
   //      what does the Boolean or String mean? You can't derive that from the type definition
   def getDoi(xml: Elem)(implicit s: Settings): Try[(String, Boolean)] = Try {
     if (s.ownerId == "mendeleydata" || s.ownerId == "mendeltest") (getDoiFromDdm(xml).get, true)
@@ -232,14 +232,16 @@ object EasyIngestFlow {
     else Failure(new RuntimeException(s"Dataset metadata contains more than one DOI: $dois"))
   }
 
-  def hasXsiType(e: Node, attributeNamespace: String, attributeValue: String): Boolean =
-    e.head.attribute("http://www.w3.org/2001/XMLSchema-instance", "type") match {
-      case Some(Seq(n)) => n.text.split("\\:") match {
-        case Array(pref, label) => e.head.getNamespace(pref) == attributeNamespace && label == attributeValue
+  def hasXsiType(e: Node, attributeNamespace: String, attributeValue: String): Boolean = {
+    e.head
+      .attribute("http://www.w3.org/2001/XMLSchema-instance", "type")
+      .exists {
+        case Seq(n) =>
+          val Array(pref, label) = n.text.split("\\:")
+          e.head.getNamespace(pref) == attributeNamespace && label == attributeValue
         case _ => false
       }
-      case _ => false
-    }
+  }
 
   def waitForFedoraSync(datasetPid: String, pidDictionary: PidDictionary, numTries: Int, delayMillis: Long)(implicit s: Settings): Try[Unit] = {
     val expectedPids = pidDictionary.values.toSet - datasetPid
@@ -250,11 +252,7 @@ object EasyIngestFlow {
       else
         queryPids(datasetPid).map(pids => pids.size == expectedPids.size && pids.toSet == expectedPids) match {
           case Success(true) => Success(Unit)
-          case _ =>
-            loop(Try { Thread.sleep(delayMillis) } match {
-              case Success(_) => n - 1
-              case Failure(_) => n
-            })
+          case _ => loop(Try { Thread.sleep(delayMillis) } map (_ => n - 1) getOrElse n)
         }
     }
     loop(numTries)
