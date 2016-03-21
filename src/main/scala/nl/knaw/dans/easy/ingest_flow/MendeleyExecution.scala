@@ -74,11 +74,11 @@ object MendeleyExecution extends Execution {
     EasyArchiveBag.run(archivebag.Settings(
       username = s.storageUser,
       password = s.storagePassword,
-      checkInterval=s.checkInterval,
-      maxCheckCount=s.maxCheckCount,
+      checkInterval = s.checkInterval,
+      maxCheckCount = s.maxCheckCount,
       bagDir = getBagDir(s.depositDir).get,
       slug = Some(urn),
-      storageDepositService =  s.storageServiceUrl)
+      storageDepositService = s.storageServiceUrl)
     )
   }
 }

@@ -28,7 +28,7 @@ object EasyIngestFlow {
     log.debug("Starting application.")
     implicit val settings = cmd parse args
 
-    execute
+    execute.flatMap(_.run)
       .map(datasetPid => log.info(s"Finished, dataset pid: $datasetPid"))
       .onError(e => {
         setDepositStateToRejected(e.getMessage)
@@ -37,11 +37,9 @@ object EasyIngestFlow {
       })
   }
 
-  def execute(implicit settings: Settings): Try[String] = {
-    for {
-      _ <- assertNoVirusesInDeposit
-      result <- (if (isMendeley) MendeleyExecution else MultiDepositExecution).run
-    } yield result
+  def execute(implicit settings: Settings): Try[Execution] = {
+    assertNoVirusesInDeposit
+      .map(_ => if (isMendeley) MendeleyExecution else MultiDepositExecution)
   }
 
   def isMendeley(implicit settings: Settings): Boolean = {

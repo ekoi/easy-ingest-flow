@@ -16,10 +16,10 @@ import scala.annotation.tailrec
 import scala.util.{Failure, Success, Try}
 import scalaj.http.Http
 
-abstract class Execution {
+trait Execution {
   val log = LoggerFactory.getLogger(getClass)
 
-  def run(implicit settings: Settings)
+  def run(implicit settings: Settings): Try[String]
 
   def requestUrn()(implicit s: Settings): Try[String] = requestPid("urn")
 
@@ -56,7 +56,7 @@ abstract class Execution {
       otherAccessDOI = otherAccessDOI,
       fedoraUrl = s.fedoraCredentials.getBaseUrl,
       fedoraUser = s.fedoraCredentials.getUsername,
-      fedoraPassword =  s.fedoraCredentials.getPassword))
+      fedoraPassword = s.fedoraCredentials.getPassword))
   }
 
   def ingestDataset()(implicit s: Settings): Try[PidDictionary] = {
