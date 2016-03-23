@@ -81,6 +81,10 @@ package object ingest_flow {
     new PropertiesConfiguration(new File(depositDir, "deposit.properties")).getString("depositor.userId")
   }
 
+  def isMendeley(implicit settings: Settings): Boolean = {
+    settings.ownerId == "mendeleydata" || settings.ownerId == "mendeltest"
+  }
+
   def getBagDir(depositDir: File): Option[File] = {
     depositDir.listFiles.find(f => f.isDirectory && f.getName != ".git")
   }

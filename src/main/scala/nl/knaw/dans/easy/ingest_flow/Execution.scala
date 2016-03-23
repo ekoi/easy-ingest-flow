@@ -6,7 +6,6 @@ import java.net.URL
 import nl.knaw.dans.easy.fsrdb.FsRdbUpdater
 import nl.knaw.dans.easy.ingest.EasyIngest
 import nl.knaw.dans.easy.ingest.EasyIngest._
-import nl.knaw.dans.easy.ingest_flow.Execution.isMendeley
 import nl.knaw.dans.easy.solr.EasyUpdateSolrIndex
 import nl.knaw.dans.easy.{fsrdb, ingest, solr, stage}
 import nl.knaw.dans.easy.stage.EasyStageDataset
@@ -148,10 +147,5 @@ trait Execution {
       log.info(s"Removing git repo at $gitDir ")
       gitDir.deleteDirectory()
     }
-  }
-}
-object Execution {
-  def isMendeley(implicit settings: Settings): Boolean = {
-    settings.ownerId == "mendeleydata" || settings.ownerId == "mendeltest"
   }
 }

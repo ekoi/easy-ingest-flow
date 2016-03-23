@@ -39,7 +39,7 @@ object EasyIngestFlow {
 
   def execute(implicit settings: Settings): Try[Execution] = {
     assertNoVirusesInDeposit
-      .map(_ => if (Execution.isMendeley) MendeleyExecution else MultiDepositExecution)
+      .map(_ => if (isMendeley) MendeleyExecution else MultiDepositExecution)
   }
 
   def assertNoVirusesInDeposit(implicit s: Settings): Try[Unit] = Try {
