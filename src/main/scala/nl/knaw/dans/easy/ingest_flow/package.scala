@@ -27,6 +27,9 @@ import scala.util.{Failure, Success, Try}
 
 package object ingest_flow {
 
+  // values
+  val stateArchived = "ARCHIVED"
+  val stateRejected = "REJECTED"
 
   // case classes
   case class Settings(storageUser: String,
@@ -76,20 +79,28 @@ package object ingest_flow {
     def deleteDirectory() = FileUtils.deleteDirectory(file)
   }
 
+  def depositPropertiesFile(implicit settings: Settings) = {
+    new File(settings.depositDir, "deposit.properties")
+  }
+
+  def bagDir(implicit settings: Settings): Option[File] = {
+    settings.depositDir.listFiles.find(f => f.isDirectory && f.getName != ".git")
+  }
+
+  def datasetMetadata(implicit settings: Settings) = {
+    bagDir.map(bag => new File(bag, "metadata/dataset.xml"))
+  }
+
   def getUserId(depositDir: File): String = {
-    new PropertiesConfiguration(new File(depositDir, "deposit.properties")).getString("depositor.userId")
+    new PropertiesConfiguration(depositDir).getString("depositor.userId")
   }
 
   def isMendeley(implicit settings: Settings): Boolean = {
     settings.ownerId == "mendeleydata" || settings.ownerId == "mendeltest"
   }
 
-  def getBagDir(depositDir: File): Option[File] = {
-    depositDir.listFiles.find(f => f.isDirectory && f.getName != ".git")
-  }
-
   def setDepositState(state: String, description: String)(implicit s: Settings): Try[Unit] = Try {
-    val stateFile = new PropertiesConfiguration(new File(s.depositDir, "deposit.properties"))
+    val stateFile = new PropertiesConfiguration(depositPropertiesFile)
     stateFile.setProperty("state.label", state)
     stateFile.setProperty("state.description", description)
     stateFile.save()

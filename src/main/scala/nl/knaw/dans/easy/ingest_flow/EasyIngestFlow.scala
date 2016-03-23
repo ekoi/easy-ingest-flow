@@ -54,15 +54,15 @@ object EasyIngestFlow {
   }
 
   def setDepositStateToRejected(reason: String)(implicit s: Settings): Try[Unit] = Try {
-    log.info("Setting deposit state to REJECTED")
-    setDepositState("REJECTED", reason)
+    log.info(s"Setting deposit state to $stateRejected")
+    setDepositState(stateRejected, reason)
   }
 
   def tagDepositAsRejected(reason: String)(implicit s: Settings): Try[Unit] = Try {
-    log.info("Tagging deposit as REJECTED")
+    log.info(s"Tagging deposit as $stateRejected")
     Git.open(s.depositDir)
       .tag()
-      .setName("state=REJECTED")
+      .setName(s"state=$stateRejected")
       .setMessage(reason).call()
   }
 }

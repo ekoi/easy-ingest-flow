@@ -36,8 +36,7 @@ object MendeleyExecution extends Execution {
   }
 
   def loadDDM()(implicit settings: Settings) = Try {
-    getBagDir(settings.depositDir)
-      .map(bag => XML.loadFile(new File(bag, "metadata/dataset.xml")))
+    datasetMetadata.map(XML.loadFile)
       .getOrElse(error(s"Could not find bag in deposit: ${settings.depositDir}"))
   }
 
@@ -76,7 +75,7 @@ object MendeleyExecution extends Execution {
       password = s.storagePassword,
       checkInterval = s.checkInterval,
       maxCheckCount = s.maxCheckCount,
-      bagDir = getBagDir(s.depositDir).get,
+      bagDir = bagDir.get,
       slug = Some(urn),
       storageDepositService = s.storageServiceUrl)
     )

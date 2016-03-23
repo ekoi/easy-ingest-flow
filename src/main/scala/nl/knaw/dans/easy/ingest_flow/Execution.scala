@@ -42,14 +42,14 @@ trait Execution {
   def stageDataset(urn: String, doi: String, otherAccessDOI: Boolean)(implicit s: Settings): Try[Unit] = {
     log.info("Staging dataset")
 
-    def getSubmissionTimestamp(depositDir: File): String = {
-      new DateTime(new File(depositDir, "deposit.properties").lastModified).toString
+    def getSubmissionTimestamp: String = {
+      new DateTime(depositPropertiesFile.lastModified).toString
     }
 
     EasyStageDataset.run(stage.Settings(
       ownerId = s.ownerId,
-      submissionTimestamp = getSubmissionTimestamp(s.depositDir),
-      bagitDir = getBagDir(s.depositDir).get,
+      submissionTimestamp = getSubmissionTimestamp,
+      bagitDir = bagDir.get,
       sdoSetDir = s.sdoSetDir,
       URN = urn,
       DOI = doi,
@@ -132,13 +132,14 @@ trait Execution {
   }
 
   def setDepositStateToArchived(datasetPid: String)(implicit s: Settings): Try[Unit] = Try {
-    setDepositState("ARCHIVED", s.datasetAccessBaseUrl + "/" + datasetPid)
+    setDepositState(stateArchived, s.datasetAccessBaseUrl + "/" + datasetPid)
   }
 
   def deleteBag()(implicit s: Settings): Try[Unit] = Try {
-    val bag = getBagDir(s.depositDir).get
-    log.info(s"Removing deposit data at $bag")
-    bag.deleteDirectory()
+    bagDir.foreach(bag => {
+      log.info(s"Removing deposit data at $bag")
+      bag.deleteDirectory()
+    })
   }
 
   def deleteGitRepo()(implicit s: Settings): Try[Unit] = Try {
