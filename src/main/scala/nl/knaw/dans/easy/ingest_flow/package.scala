@@ -91,6 +91,8 @@ package object ingest_flow {
     bagDir.map(bag => new File(bag, "metadata/dataset.xml"))
   }
 
+  def gitDir(implicit settings: Settings) = new File(settings.depositDir, ".git")
+
   def getUserId(depositDir: File): String = {
     new PropertiesConfiguration(depositDir).getString("depositor.userId")
   }

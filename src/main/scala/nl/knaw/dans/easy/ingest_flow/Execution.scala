@@ -1,6 +1,5 @@
 package nl.knaw.dans.easy.ingest_flow
 
-import java.io.File
 import java.net.URL
 
 import nl.knaw.dans.easy.fsrdb.FsRdbUpdater
@@ -143,10 +142,10 @@ trait Execution {
   }
 
   def deleteGitRepo()(implicit s: Settings): Try[Unit] = Try {
-    val gitDir = new File(s.depositDir, ".git")
-    if (gitDir.exists) {
-      log.info(s"Removing git repo at $gitDir ")
-      gitDir.deleteDirectory()
+    val git = gitDir(s)
+    if (git.exists) {
+      log.info(s"Removing git repo at $git ")
+      git.deleteDirectory()
     }
   }
 }
