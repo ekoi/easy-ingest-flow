@@ -60,27 +60,27 @@
         <dependency>
             <groupId>nl.knaw.dans.easy</groupId>
             <artifactId>easy-archive-bag</artifactId>
-            <version>1.0.1</version>
+            <version>1.x-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>nl.knaw.dans.easy</groupId>
             <artifactId>easy-stage-dataset</artifactId>
-            <version>1.0.1</version>
+            <version>1.x-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>nl.knaw.dans.easy</groupId>
             <artifactId>easy-ingest</artifactId>
-            <version>1.0.1</version>
+            <version>1.x-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>nl.knaw.dans.easy</groupId>
             <artifactId>easy-update-fs-rdb</artifactId>
-            <version>1.0.2</version>
+            <version>1.x-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>nl.knaw.dans.easy</groupId>
             <artifactId>easy-update-solr-index</artifactId>
-            <version>1.0.1</version>
+            <version>1.x-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.eclipse.jgit</groupId>

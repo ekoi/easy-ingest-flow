@@ -6,6 +6,7 @@ import java.net.URL
 import nl.knaw.dans.easy.fsrdb.FsRdbUpdater
 import nl.knaw.dans.easy.ingest.EasyIngest
 import nl.knaw.dans.easy.ingest.EasyIngest._
+import nl.knaw.dans.easy.ingest_flow.Execution.isMendeley
 import nl.knaw.dans.easy.solr.EasyUpdateSolrIndex
 import nl.knaw.dans.easy.{fsrdb, ingest, solr, stage}
 import nl.knaw.dans.easy.stage.EasyStageDataset
@@ -54,6 +55,7 @@ trait Execution {
       URN = urn,
       DOI = doi,
       otherAccessDOI = otherAccessDOI,
+      isMendeley = isMendeley, // TODO add this once this is added to EasyStageDataset
       fedoraUrl = s.fedoraCredentials.getBaseUrl,
       fedoraUser = s.fedoraCredentials.getUsername,
       fedoraPassword = s.fedoraCredentials.getPassword))
@@ -146,5 +148,10 @@ trait Execution {
       log.info(s"Removing git repo at $gitDir ")
       gitDir.deleteDirectory()
     }
+  }
+}
+object Execution {
+  def isMendeley(implicit settings: Settings): Boolean = {
+    settings.ownerId == "mendeleydata" || settings.ownerId == "mendeltest"
   }
 }
