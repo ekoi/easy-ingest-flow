@@ -1,7 +1,5 @@
 package nl.knaw.dans.easy.ingest_flow
 
-import java.io.File
-
 import nl.knaw.dans.easy.archivebag
 import nl.knaw.dans.easy.archivebag.EasyArchiveBag
 
