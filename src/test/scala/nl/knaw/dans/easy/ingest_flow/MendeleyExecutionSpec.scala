@@ -1,34 +1,20 @@
-/**
- * Copyright (C) 2015-2016 DANS - Data Archiving and Networked Services (info@dans.knaw.nl)
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package nl.knaw.dans.easy.ingest_flow
 
 import org.scalatest.{Matchers, FlatSpec}
-import EasyIngestFlow._
 
 import scala.util.{Failure, Success}
+
+import MendeleyExecution._
 
 /**
   * NOTE: the XML documents are all INVALID DDM-documents for other reasons than the focus of the test. Since the
   * functions tested do not perform an overall validation of the document, this is not a problem. On the other hand,
   * valid documents would take up too much space and obscure the meaning of these very limited tests.
   */
-class EasyIngestFlowSpec extends FlatSpec with Matchers {
+class MendeleyExecutionSpec extends FlatSpec with Matchers {
 
   "getDoiFromDdm" should "succeed if there is one DOI-identifier with correct type-attribute present" in {
-      getDoiFromDdm(
+    getDoiFromDdm(
       <ddm:DDM xmlns:dcterms="http://purl.org/dc/terms/"
                xmlns:id-type="http://easy.dans.knaw.nl/schemas/vocab/identifier-type/"
                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -41,13 +27,13 @@ class EasyIngestFlowSpec extends FlatSpec with Matchers {
 
   it should "fail if type attribute is not from Schema-Instance namespace" in {
     getDoiFromDdm(
-    <ddm:DDM xmlns:dcterms="http://purl.org/dc/terms/"
-             xmlns:id-type="http://easy.dans.knaw.nl/schemas/vocab/identifier-type/"
-             xmlns:xsi="**NOT** http://www.w3.org/2001/XMLSchema-instance">
-      <ddm:dcmiMetadata>
-        <dcterms:identifier xsi:type="id-type:DOI">THE-VALID-DOI</dcterms:identifier>
-      </ddm:dcmiMetadata>
-    </ddm:DDM>) shouldBe a[Failure[_]]
+      <ddm:DDM xmlns:dcterms="http://purl.org/dc/terms/"
+               xmlns:id-type="http://easy.dans.knaw.nl/schemas/vocab/identifier-type/"
+               xmlns:xsi="**NOT** http://www.w3.org/2001/XMLSchema-instance">
+        <ddm:dcmiMetadata>
+          <dcterms:identifier xsi:type="id-type:DOI">THE-VALID-DOI</dcterms:identifier>
+        </ddm:dcmiMetadata>
+      </ddm:DDM>) shouldBe a[Failure[_]]
   }
 
   it should "fail if type attribute value is not from id-type namespace" in {
@@ -104,5 +90,4 @@ class EasyIngestFlowSpec extends FlatSpec with Matchers {
         <ddm:dcmiMetadata />
       </ddm:DDM>) shouldBe a[Failure[_]]
   }
-
 }
