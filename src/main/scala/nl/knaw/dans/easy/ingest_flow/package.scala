@@ -27,24 +27,23 @@ import scala.util.{Failure, Success, Try}
 
 package object ingest_flow {
 
-  // types
 
   // case classes
-  case class Settings(storageUser: String = null,
-                      storagePassword: String = null,
-                      storageServiceUrl: URL = null,
-                      fedoraCredentials: FedoraCredentials = null,
-                      numSyncTries: Int = 0,
-                      syncDelay: Long = 0,
-                      ownerId: String = null,
-                      datasetAccessBaseUrl: String = null,
-                      depositDir: File = null,
-                      checkInterval: Int = 0,
-                      maxCheckCount: Int = 0,
-                      sdoSetDir: File = null,
-                      postgresURL: String = null,
-                      solr: String = null,
-                      pidgen: String = null)
+  case class Settings(storageUser: String,
+                      storagePassword: String,
+                      storageServiceUrl: URL,
+                      fedoraCredentials: FedoraCredentials,
+                      numSyncTries: Int,
+                      syncDelay: Long,
+                      ownerId: String,
+                      datasetAccessBaseUrl: String,
+                      depositDir: File,
+                      checkInterval: Int,
+                      maxCheckCount: Int,
+                      sdoSetDir: File,
+                      postgresURL: String,
+                      solr: String,
+                      pidgen: String)
 
   object Version {
     def apply(): String = {

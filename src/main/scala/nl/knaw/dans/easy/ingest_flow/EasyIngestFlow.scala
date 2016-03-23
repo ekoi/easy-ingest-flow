@@ -32,7 +32,8 @@ object EasyIngestFlow {
       .map(datasetPid => log.info(s"Finished, dataset pid: $datasetPid"))
       .onError(e => {
         setDepositStateToRejected(e.getMessage)
-        tagDepositAsRejected(e.getMessage)
+        // TODO this call is harmfull, as the deposits are not git repositories anymore!
+//        tagDepositAsRejected(e.getMessage)
         log.error(e.getMessage)
       })
   }
@@ -57,7 +58,6 @@ object EasyIngestFlow {
     setDepositState("REJECTED", reason)
   }
 
-  // TODO has this the side effect of adding a .git folder?
   def tagDepositAsRejected(reason: String)(implicit s: Settings): Try[Unit] = Try {
     log.info("Tagging deposit as REJECTED")
     Git.open(s.depositDir)

@@ -7,8 +7,8 @@ import nl.knaw.dans.easy.fsrdb.FsRdbUpdater
 import nl.knaw.dans.easy.ingest.EasyIngest
 import nl.knaw.dans.easy.ingest.EasyIngest._
 import nl.knaw.dans.easy.solr.EasyUpdateSolrIndex
-import nl.knaw.dans.easy.{fsrdb, ingest, solr, stage}
 import nl.knaw.dans.easy.stage.EasyStageDataset
+import nl.knaw.dans.easy.{fsrdb, ingest, solr, stage}
 import org.joda.time.DateTime
 import org.slf4j.LoggerFactory
 
@@ -54,7 +54,7 @@ trait Execution {
       URN = urn,
       DOI = doi,
       otherAccessDOI = otherAccessDOI,
-      isMendeley = isMendeley, // TODO add this once this is added to EasyStageDataset
+      isMendeley = isMendeley,
       fedoraUrl = s.fedoraCredentials.getBaseUrl,
       fedoraUser = s.fedoraCredentials.getUsername,
       fedoraPassword = s.fedoraCredentials.getPassword))

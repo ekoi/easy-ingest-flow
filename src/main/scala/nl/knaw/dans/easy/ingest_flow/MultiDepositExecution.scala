@@ -8,7 +8,7 @@ object MultiDepositExecution extends Execution {
     for {
       urn <- requestUrn()
       doi <- requestDoi()
-      _ <- stageDataset(urn, doi, false) // TODO refactor?
+      _ <- stageDataset(urn, doi, otherAccessDOI = false)
       pidDictionary <- ingestDataset()
       datasetPid <- getDatasetPid(pidDictionary)
       _ <- waitForFedoraSync(datasetPid, pidDictionary)

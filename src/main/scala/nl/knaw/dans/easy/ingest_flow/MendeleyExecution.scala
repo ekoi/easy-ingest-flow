@@ -19,14 +19,14 @@ object MendeleyExecution extends Execution {
       _ <- assertNoAccessSet(xml)
       urn <- requestUrn()
       doi <- getDoiFromDdm(xml)
-      _ <- stageDataset(urn, doi, true) // TODO refactor?
+      _ <- stageDataset(urn, doi, otherAccessDOI = true)
       pidDictionary <- ingestDataset()
       datasetPid <- getDatasetPid(pidDictionary)
       _ <- waitForFedoraSync(datasetPid, pidDictionary)
       _ <- updateFsRdb(datasetPid)
       _ <- updateSolr(datasetPid)
       _ <- deleteSdoSetDir()
-      (storageDatasetDir, state) <- archiveBag(urn) // TODO refactor? what to do with storageDatasetDir and state? only logging?
+      (_, state) <- archiveBag(urn)
       _ = log.info(s"Archival storage service returned: $state")
       if state == STATE_SUBMITTED
       _ <- setDepositStateToArchived(datasetPid)
