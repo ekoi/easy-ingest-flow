@@ -40,6 +40,10 @@ object CommandLineOptions {
 
     Fedora.setFedoraConnectionSettings(props.getString("fcrepo.url"), props.getString("fcrepo.user"), props.getString("fcrepo.password"))
 
+    def getUserId(depositDir: File): String = {
+      new PropertiesConfiguration(new File(depositDir, "deposit.properties")).getString("depositor.userId")
+    }
+
     val settings = Settings(
       storageUser = props.getString("storage.user"),
       storagePassword = props.getString("storage.password"),

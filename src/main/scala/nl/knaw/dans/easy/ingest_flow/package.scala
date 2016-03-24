@@ -93,10 +93,6 @@ package object ingest_flow {
 
   def gitDir(implicit settings: Settings) = new File(settings.depositDir, ".git")
 
-  def getUserId(depositDir: File): String = {
-    new PropertiesConfiguration(depositDir).getString("depositor.userId")
-  }
-
   def isMendeley(implicit settings: Settings): Boolean = {
     settings.ownerId == "mendeleydata" || settings.ownerId == "mendeltest"
   }
