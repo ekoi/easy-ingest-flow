@@ -43,8 +43,7 @@ object EasyIngestFlow {
     log.debug("Starting application.")
     implicit val settings = cmd parse args
 
-    execute.flatMap(_.run)
-      .map(datasetPid => log.info(s"Finished, dataset pid: $datasetPid"))
+    run.map(datasetPid => log.info(s"Finished, dataset pid: $datasetPid"))
       .onError(e => {
         setDepositStateToRejected(e.getMessage)
         // TODO this call is harmfull, as the deposits are not git repositories anymore!
@@ -52,6 +51,8 @@ object EasyIngestFlow {
         log.error(e.getMessage)
       })
   }
+
+  def run(implicit settings: Settings) = execute.flatMap(_.run)
 
   def execute(implicit settings: Settings): Try[Execution] = {
     assertNoVirusesInDeposit
