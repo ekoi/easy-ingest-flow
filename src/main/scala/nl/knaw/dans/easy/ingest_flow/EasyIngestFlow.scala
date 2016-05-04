@@ -65,7 +65,7 @@ object EasyIngestFlow {
     log.info(s"Scanning for viruses: $cmd")
     val output = new StringBuilder
     val exit = Process(cmd) ! ProcessLogger(line => output ++= s"$line\n")
-    if (exit > 0) throw new RuntimeException(s"Detected a virus, clamscan output:\n${output.toString}")
+    if (exit > 0) throw new RuntimeException(s"Detected a virus (or scanner terminated with an error), clamscan output:\n${output.toString}")
     log.info("No viruses found")
   }
 
