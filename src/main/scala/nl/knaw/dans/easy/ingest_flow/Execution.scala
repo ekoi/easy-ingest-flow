@@ -61,9 +61,8 @@ trait Execution {
     }
 
     EasyStageDataset.run(stage.Settings(
-      ownerId = s.ownerId,
       submissionTimestamp = getSubmissionTimestamp,
-      bagitDir = bagDir.get,
+      depositDir = s.depositDir,
       sdoSetDir = s.sdoSetDir,
       URN = urn,
       DOI = doi,
